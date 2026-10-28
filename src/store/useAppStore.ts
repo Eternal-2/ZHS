@@ -442,6 +442,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       isGuide ? fetchWalletBalance(user.id).catch(() => 0) : Promise.resolve(0),
       isGuide ? fetchGuideDestinations(user.id).catch(() => [] as string[]) : Promise.resolve(null)
     ]);
+    if (typeof window !== 'undefined' && window.location.hash.includes('access_token')) {
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    }
     const { redirectAfterLogin, activeScreen } = get();
     const onAuthScreen = ['welcome', 'login', 'register'].includes(activeScreen);
     let next: ScreenType = activeScreen;

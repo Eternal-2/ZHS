@@ -45,8 +45,19 @@ export async function fetchCurrentUser(): Promise<User | null> {
   const { data: sessionData } = await supabase.auth.getSession();
   const session = sessionData.session;
   if (!session) return null;
-  const { data: profile, error } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
-  if (error || !profile) return null;
+  let { data: profile, error } = await supabase.from('profiles').select('*').eq('id', session.user.id).maybeSingle();
+  if (error) console.error('[ZHS] Gagal membaca profil:', error.message);
+
+  if (!profile) {
+    // Akun (mis. Google) yang barisnya belum terbentuk: minta server membuatnya, lalu baca ulang.
+    const { error: rpcError } = await supabase.rpc('ensure_profile');
+    if (rpcError) {
+      console.error('[ZHS] ensure_profile gagal (sudah menjalankan SQL terbaru?):', rpcError.message);
+      return null;
+    }
+    ({ data: profile } = await supabase.from('profiles').select('*').eq('id', session.user.id).maybeSingle());
+  }
+  if (!profile) return null;
   return profileToUser(profile, session.user.email ?? '');
 }
 
