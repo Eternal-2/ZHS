@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { MOCK_GUIDES, MOCK_UMKM } from '../data/mockData';
+import { AVAILABLE_DESTINATIONS } from '../data/bookingExtras';
 import { 
   Search, MapPin, Star, Sparkles, ShieldCheck, Store, 
   ArrowRight, CheckCircle2, ArrowLeft, SlidersHorizontal,
@@ -37,86 +38,28 @@ export const ExploreScreen: React.FC = () => {
     'Kuliner & UMKM'
   ];
 
-  const exploreTours: TourCardData[] = [
-    {
-      id: 'situ-buleud',
-      title: 'Trip to Situ Buleud & Air Mancur Sri Baduga',
-      category: 'Cagar Budaya',
-      guide: 'Bambang Pamungkas',
-      location: 'Nagri Kidul, Kec. Purwakarta, Kab. Purwakarta',
-      rating: '9.4',
-      reviewsCount: 20290,
-      pricePerPerson: 35000,
-      image: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=800&q=80',
-      highlights: ['Cagar Budaya Sunda', 'Air Mancur Laser Menari', 'Voucher Sate Maranggi'],
-      screenTarget: 'detail-tour'
-    },
-    {
-      id: 'gracia-spa',
-      title: 'Gracia Spa Hot Spring Pool',
-      category: 'Air Panas & Curug',
-      guide: 'Hanif Ramadhan',
-      location: 'Desa Cikondang, Kec. Ciater, Kabupaten Subang',
-      rating: '9.2',
-      reviewsCount: 8409,
-      pricePerPerson: 100000,
-      image: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=800&q=80',
-      highlights: ['Kolam Air Panas Alami', 'Dikelilingi Kebun Teh', 'Relaksasi Belerang Asri'],
-      screenTarget: 'detail-tour'
-    },
-    {
-      id: 'pasir-langlang',
-      title: 'Pasir Langlang Panyawangan (Hutan Pinus)',
-      category: 'Wisata Alam',
-      guide: 'Siti Aminah',
-      location: 'Desa Cihanjawar, Kec. Bojong/Wanayasa, Purwakarta',
-      rating: '9.5',
-      reviewsCount: 4210,
-      pricePerPerson: 45000,
-      image: 'https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=800&q=80',
-      highlights: ['Hutan Pinus Alami', 'Jalur Piknik Ramah Anak', 'Spot Hammock Asri'],
-      screenTarget: 'detail-tour'
-    },
-    {
-      id: 'curug-tilu',
-      title: 'Curug Tilu & Kolam Alami Ciririp',
-      category: 'Air Panas & Curug',
-      guide: 'Furab',
-      location: 'Desa Ciririp, Kec. Sukasari, Kab. Purwakarta',
-      rating: '9.1',
-      reviewsCount: 3120,
-      pricePerPerson: 40000,
-      image: 'https://images.unsplash.com/photo-1546587348-d12660c30c50?auto=format&fit=crop&w=800&q=80',
-      highlights: ['Green Canyon Purwakarta', 'Air Jernih Alami', 'Spot Berenang Santai'],
-      screenTarget: 'detail-tour'
-    },
-    {
-      id: 'benteng-vredeburg',
-      title: 'Museum Benteng Vredeburg',
-      category: 'Cagar Budaya',
-      guide: 'Bigmo',
-      location: 'Ngupasan, Kec. Gondomanan, Kota Yogyakarta',
-      rating: '9.4',
-      reviewsCount: 20290,
-      pricePerPerson: 14000,
-      image: 'https://images.unsplash.com/photo-1513836279014-a89f7a76ae86?auto=format&fit=crop&w=800&q=80',
-      highlights: ['Diorama Perjuangan', 'Arsitektur Benteng Kolonial', 'Spot Foto Bersejarah'],
-      screenTarget: 'detail-tour'
-    },
-    {
-      id: 'gunung-bromo',
-      title: 'Tur Sunrise Savana Gunung Bromo',
-      category: 'Wisata Alam',
-      guide: 'Wahyu Kurniawan',
-      location: 'Sumberkedawung, Kec. Leces, Kab. Probolinggo',
-      rating: '9.3',
-      reviewsCount: 1416,
-      pricePerPerson: 400000,
-      image: 'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?auto=format&fit=crop&w=800&q=80',
-      highlights: ['Golden Sunrise Bromo', 'Kawah Bromo & Pasir Berbisik', 'Jeep 4x4 Terverifikasi'],
-      screenTarget: 'detail-tour'
-    }
-  ];
+  const categoryOf = (raw: string): TourCardData['category'] => {
+    const c = raw.toLowerCase();
+    if (c.includes('budaya') || c.includes('sejarah') || c.includes('heritage')) return 'Cagar Budaya';
+    if (c.includes('air panas') || c.includes('curug')) return 'Air Panas & Curug';
+    if (c.includes('kuliner') || c.includes('umkm')) return 'Kuliner & UMKM';
+    return 'Wisata Alam';
+  };
+
+  // Daftar tur berasal dari tabel `destinations` (dimuat saat aplikasi dibuka)
+  const exploreTours: TourCardData[] = AVAILABLE_DESTINATIONS.map((d) => ({
+    id: d.id,
+    title: d.title,
+    category: categoryOf(d.category),
+    guide: 'Pemandu Terverifikasi ZHS',
+    location: d.location,
+    rating: d.rating.split('/')[0],
+    reviewsCount: d.reviewsCount ?? 0,
+    pricePerPerson: d.unitPrice,
+    image: d.image,
+    highlights: d.highlights?.length ? d.highlights : [d.category],
+    screenTarget: 'detail-tour'
+  }));
 
   const filteredTours = exploreTours
     .filter((item) => {

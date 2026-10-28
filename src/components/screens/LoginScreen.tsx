@@ -2,39 +2,47 @@ import React, { useState } from 'react';
 import { useAppStore } from '../../store/useAppStore';
 import { LogoZH } from '../LogoZH';
 import { AlertTriangle, ArrowLeft, CheckCircle2, ShieldCheck, UserCheck, Info } from 'lucide-react';
+import { signInWithProvider, sendPasswordReset } from '../../services/authService';
 
 export const LoginScreen: React.FC = () => {
-  const { login, setActiveScreen, redirectAfterLogin } = useAppStore();
+  const { signIn, setActiveScreen, redirectAfterLogin } = useAppStore();
   const [roleTab, setRoleTab] = useState<'Wisatawan' | 'Pemandu'>('Wisatawan');
-  const [username, setUsername] = useState('niceguymo');
-  const [password, setPassword] = useState('••••••••');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [hasError, setHasError] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [loading, setLoading] = useState(false);
   const [isResetMode, setIsResetMode] = useState(false);
   const [resetSent, setResetSent] = useState(false);
 
   const handleRoleChange = (role: 'Wisatawan' | 'Pemandu') => {
     setRoleTab(role);
     setHasError(false);
-    if (role === 'Pemandu') {
-      setUsername('bambang_guide');
-    } else {
-      setUsername('niceguymo');
-    }
   };
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (password === 'salah') {
-      setHasError(true);
-      return;
-    }
     setHasError(false);
-    login(roleTab === 'Wisatawan' ? 'wisatawan' : 'pemandu', username);
+    setLoading(true);
+    try {
+      await signIn(username.trim(), password); // Supabase Auth; role diambil dari tabel profiles
+    } catch (err: any) {
+      setErrorMsg(err?.message === 'Invalid login credentials' ? 'Email atau password tidak valid. Silakan coba lagi.' : err?.message ?? 'Gagal masuk.');
+      setHasError(true);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleResetSubmit = (e: React.FormEvent) => {
+  const handleResetSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setResetSent(true);
+    try {
+      await sendPasswordReset(username.trim());
+      setResetSent(true);
+    } catch (err: any) {
+      setErrorMsg(err?.message ?? 'Gagal mengirim email reset.');
+      setHasError(true);
+    }
   };
 
   return (
@@ -165,14 +173,14 @@ export const LoginScreen: React.FC = () => {
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                {roleTab === 'Pemandu' ? 'ID PEMANDU / NO. SERTIFIKAT BNSP / EMAIL' : 'EMAIL / USERNAME'}
+                EMAIL
               </label>
               <input
-                type="text"
+                type="email"
                 required
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder={roleTab === 'Pemandu' ? 'Contoh: bambang_guide atau ID-BNSP-889' : 'Masukkan email atau username'}
+                placeholder="nama@email.com"
                 className="w-full px-4 py-3 bg-white border border-slate-300 rounded-xl text-sm text-slate-800 focus:outline-none focus:border-[#19324d] focus:ring-1 focus:ring-[#19324d]"
               />
             </div>
@@ -195,16 +203,17 @@ export const LoginScreen: React.FC = () => {
             {hasError && (
               <div className="p-3 bg-red-50 border border-red-300 rounded-xl flex items-center gap-2 text-xs text-red-800 animate-in fade-in">
                 <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
-                <span>Kredensial atau password tidak valid. Silakan coba lagi.</span>
+                <span>{errorMsg || 'Kredensial atau password tidak valid. Silakan coba lagi.'}</span>
               </div>
             )}
 
             <button
               type="submit"
               id="btn-submit-login"
+              disabled={loading}
               className="w-full py-3.5 bg-[#19324d] hover:bg-[#122438] text-white font-extrabold text-xs uppercase tracking-wider rounded-full shadow-md active:scale-98 transition-all"
             >
-              MASUK SEBAGAI {roleTab.toUpperCase()}
+              {loading ? 'MEMPROSES…' : `MASUK SEBAGAI ${roleTab.toUpperCase()}`}
             </button>
 
             <div className="text-center pt-1">
@@ -232,7 +241,7 @@ export const LoginScreen: React.FC = () => {
             <div className="grid grid-cols-2 gap-3">
               <button
                 type="button"
-                onClick={() => login('wisatawan', 'google.user@gmail.com')}
+                onClick={() => void signInWithProvider('google')}
                 className="py-2.5 px-3 bg-white border border-slate-300 hover:bg-slate-50 rounded-xl flex items-center justify-center gap-2 text-xs font-semibold text-slate-700 shadow-sm transition-all"
               >
                 <span className="font-bold text-red-500 text-sm">G</span>
@@ -241,7 +250,7 @@ export const LoginScreen: React.FC = () => {
 
               <button
                 type="button"
-                onClick={() => login('wisatawan', 'fb.user@facebook.com')}
+                onClick={() => void signInWithProvider('facebook')}
                 className="py-2.5 px-3 bg-white border border-slate-300 hover:bg-slate-50 rounded-xl flex items-center justify-center gap-2 text-xs font-semibold text-slate-700 shadow-sm transition-all"
               >
                 <span className="font-bold text-blue-600 text-sm">f</span>

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { MONTHS_ID, formatDateId } from '../../lib/dates';
 import { useAppStore } from '../../store/useAppStore';
 import { MOCK_GUIDES } from '../../data/mockData';
 import { 
@@ -33,12 +34,15 @@ export const BookingConfirmScreen: React.FC = () => {
     removeFoodAddOn,
     clearFoodAddOns,
     applyPointsDiscount,
+    confirmPayment,
+    bookingBusy,
     setActiveScreen 
   } = useAppStore();
 
   // Modals
   const [destinationModalOpen, setDestinationModalOpen] = useState(false);
   const [dateModalOpen, setDateModalOpen] = useState(false);
+  const [calMonth, setCalMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const [meetingModalOpen, setMeetingModalOpen] = useState(false);
   const [guideModalOpen, setGuideModalOpen] = useState(false);
   const [transportDetailModal, setTransportDetailModal] = useState<TransportOption | null>(null);
@@ -948,10 +952,11 @@ export const BookingConfirmScreen: React.FC = () => {
               {/* Submit CTA */}
               <button
                 type="button"
-                onClick={() => setActiveScreen('payment-qris')}
+                disabled={bookingBusy}
+                onClick={() => void confirmPayment('QRIS')}
                 className="w-full py-3.5 bg-[#19324d] hover:bg-[#122438] text-white font-extrabold text-xs sm:text-sm uppercase tracking-wider rounded-full shadow-md active:scale-98 transition-all flex items-center justify-center gap-2"
               >
-                <span>LANJUT KE PEMBAYARAN QRIS →</span>
+                <span>{bookingBusy ? 'MEMBUAT PESANAN…' : 'LANJUT KE PEMBAYARAN QRIS →'}</span>
               </button>
             </div>
 
@@ -1354,19 +1359,48 @@ export const BookingConfirmScreen: React.FC = () => {
               </button>
             </div>
 
-            <div className="text-center font-bold text-sm text-[#19324d]">April 2026</div>
+            <div className="flex items-center justify-between">
+              <button
+                type="button"
+                disabled={calMonth <= new Date(new Date().getFullYear(), new Date().getMonth(), 1)}
+                onClick={() => setCalMonth(new Date(calMonth.getFullYear(), calMonth.getMonth() - 1, 1))}
+                className="px-3 py-1 text-lg font-bold text-slate-500 disabled:opacity-30"
+              >
+                ‹
+              </button>
+              <div className="font-bold text-sm text-[#19324d]">
+                {MONTHS_ID[calMonth.getMonth()]} {calMonth.getFullYear()}
+              </div>
+              <button
+                type="button"
+                onClick={() => setCalMonth(new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 1))}
+                className="px-3 py-1 text-lg font-bold text-slate-500"
+              >
+                ›
+              </button>
+            </div>
 
             <div className="grid grid-cols-7 gap-1 text-center text-xs">
               {['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'].map((d) => (
                 <span key={d} className="font-bold text-slate-400 py-1">{d}</span>
               ))}
-              {Array.from({ length: 30 }, (_, i) => i + 1).map((day) => {
-                const dateStr = `${day} April 2026`;
+              {Array.from({ length: calMonth.getDay() }, (_, i) => (
+                <span key={`blank-${i}`} />
+              ))}
+              {Array.from(
+                { length: new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 0).getDate() },
+                (_, i) => i + 1
+              ).map((day) => {
+                const date = new Date(calMonth.getFullYear(), calMonth.getMonth(), day);
+                const todayStart = new Date(new Date().setHours(0, 0, 0, 0));
+                const isPast = date <= todayStart; // minimal H+1
+                const dateStr = formatDateId(date);
                 const isSelected = activeBooking.date === dateStr;
                 return (
                   <button
                     key={day}
                     type="button"
+                    disabled={isPast}
                     onClick={() => {
                       setBookingDate(dateStr);
                       setDateModalOpen(false);
@@ -1374,6 +1408,8 @@ export const BookingConfirmScreen: React.FC = () => {
                     className={`py-2 rounded-xl font-bold transition-all ${
                       isSelected
                         ? 'bg-[#19324d] text-white shadow-sm'
+                        : isPast
+                        ? 'text-slate-300 cursor-not-allowed'
                         : 'hover:bg-slate-100 text-slate-700'
                     }`}
                   >

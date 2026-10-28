@@ -25,8 +25,8 @@ export const DirectChatScreen: React.FC = () => {
 
   // Info of the person on the other end
   const partnerName = isGuideUser 
-    ? 'Niceguymo (Wisatawan)' 
-    : (booking.guide?.name || 'Bambang Pamungkas (Pemandu)');
+    ? `${booking.touristName || 'Wisatawan'} (Wisatawan)` 
+    : `${booking.guide?.name || 'Pemandu ZHS'} (Pemandu)`;
 
   const partnerAvatar = isGuideUser
     ? 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=200&q=80'

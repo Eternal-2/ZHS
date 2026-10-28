@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../../store/useAppStore';
+import { signUp, verifySignUpOtp, resendSignUpOtp } from '../../services/authService';
 import { LogoZH } from '../LogoZH';
 import {
   ShieldCheck, ArrowRight, ArrowLeft, Delete, CheckCircle2,
@@ -12,7 +13,7 @@ const TRAVEL_PREFS = ['Alam', 'Budaya', 'Petualangan', 'Kuliner'];
 const LANGUAGES = ['Indonesia', 'Inggris', 'Mandarin', 'Arab', 'Sunda', 'Jawa'];
 
 export const RegisterScreen: React.FC = () => {
-  const { login, setActiveScreen } = useAppStore();
+  const { hydrateUser, setActiveScreen } = useAppStore();
   const [roleTab, setRoleTab] = useState<'Wisatawan' | 'Pemandu'>('Wisatawan');
   const [step, setStep] = useState<FormStep>('role-select');
 
@@ -22,6 +23,9 @@ export const RegisterScreen: React.FC = () => {
   const [birthDate, setBirthDate] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [otpError, setOtpError] = useState('');
   const [address, setAddress] = useState('');
   const [nationality, setNationality] = useState('');
   const [city, setCity] = useState('');
@@ -64,6 +68,7 @@ export const RegisterScreen: React.FC = () => {
     else if (!validatePhone(phone)) errs.phone = 'Format nomor HP tidak valid (contoh: 081234567890)';
     if (!email) errs.email = 'Email wajib diisi';
     else if (!validateEmail(email)) errs.email = 'Format email tidak valid';
+    if (password.length < 8) errs.password = 'Password minimal 8 karakter';
     if (!address.trim()) errs.address = 'Alamat wajib diisi';
     if (!nationality) errs.nationality = 'Kewarganegaraan wajib dipilih';
     if (!city.trim()) errs.city = 'Kota domisili wajib diisi';
@@ -87,11 +92,36 @@ export const RegisterScreen: React.FC = () => {
     if (validateStep1()) setStep('step2');
   };
 
-  const handleStep2Submit = (e: React.FormEvent) => {
+  const registerInput = () => ({
+    email: email.trim(), password, fullName: name.trim(), phone, gender, birthDate, address, city, nationality,
+    languages: selectedLangs, travelPreferences: selectedPrefs, emergencyName, emergencyPhone
+  });
+
+  const handleStep2Submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (validateStep2()) {
+    if (!validateStep2()) return;
+    setSubmitting(true);
+    try {
+      await signUp(registerInput());          // Supabase mengirim kode 6 digit ke email
+      setOtp(['', '', '', '', '', '']);
+      setOtpError('');
       setStep('otp');
       setSecondsLeft(300);
+    } catch (err: any) {
+      setErrors((p) => ({ ...p, email: err?.message ?? 'Pendaftaran gagal' }));
+      setStep('step1');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const verifyCode = async (code: string) => {
+    try {
+      await verifySignUpOtp(email.trim(), code, registerInput());
+      setStep('success');
+    } catch (err: any) {
+      setOtpError(err?.message ?? 'Kode OTP salah atau sudah kedaluwarsa');
+      setOtp(['', '', '', '', '', '']);
     }
   };
 
@@ -111,7 +141,7 @@ export const RegisterScreen: React.FC = () => {
       next[firstEmpty] = val;
       setOtp(next);
       if (firstEmpty === 5) {
-        setTimeout(() => setStep('success'), 400);
+        void verifyCode(next.join(''));
       }
     }
   };
@@ -308,6 +338,22 @@ export const RegisterScreen: React.FC = () => {
               </div>
             </div>
 
+            {/* Password */}
+            <div>
+              <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">
+                Password <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="password"
+                autoComplete="new-password"
+                value={password}
+                onChange={(e) => { setPassword(e.target.value); setErrors((p) => ({ ...p, password: '' })); }}
+                placeholder="Minimal 8 karakter"
+                className={inputCls('password')}
+              />
+              {errors.password && <p className="text-[10px] text-red-500 mt-0.5">{errors.password}</p>}
+            </div>
+
             {/* Alamat */}
             <div>
               <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">
@@ -496,7 +542,7 @@ export const RegisterScreen: React.FC = () => {
               type="submit"
               className="w-full py-3 bg-[#19324d] hover:bg-[#122438] text-white font-bold text-xs uppercase tracking-wider rounded-full shadow-md transition-all flex items-center justify-center gap-2"
             >
-              <span>Daftar & Verifikasi OTP</span>
+              <span>{submitting ? 'Memproses…' : 'Daftar & Verifikasi OTP'}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>
@@ -512,8 +558,8 @@ export const RegisterScreen: React.FC = () => {
             </div>
             <h2 className="text-xl font-bold text-[#19324d]">Verifikasi OTP</h2>
             <p className="text-xs text-slate-500 max-w-xs mx-auto">
-              Kode OTP 6 digit telah dikirimkan ke nomor HP{' '}
-              <strong className="text-slate-700">{phone}</strong>
+              Kode OTP 6 digit telah dikirimkan ke email{' '}
+              <strong className="text-slate-700">{email}</strong>
             </p>
 
             {/* 6 Digit OTP Boxes */}
@@ -536,10 +582,11 @@ export const RegisterScreen: React.FC = () => {
                 {formatTimer(secondsLeft)}
               </div>
               <p className="text-[11px] text-slate-400 mt-0.5">Batas waktu verifikasi</p>
+              {otpError && <p className="text-xs text-red-500 mt-2 max-w-xs mx-auto">{otpError}</p>}
               {secondsLeft === 0 && (
                 <button
                   type="button"
-                  onClick={() => setSecondsLeft(300)}
+                  onClick={() => { setSecondsLeft(300); void resendSignUpOtp(email.trim()); }}
                   className="text-xs text-[#19324d] font-bold underline mt-2"
                 >
                   Kirim Ulang Kode
@@ -604,7 +651,7 @@ export const RegisterScreen: React.FC = () => {
             </div>
             <button
               type="button"
-              onClick={() => login(roleTab === 'Wisatawan' ? 'wisatawan' : 'pemandu', email || name)}
+              onClick={() => void hydrateUser({ navigate: true })}
               className="w-full py-3.5 bg-[#19324d] hover:bg-[#122438] text-white font-bold text-xs uppercase tracking-wider rounded-full shadow-lg flex items-center justify-center gap-2 transition-all active:scale-98"
             >
               <span>Masuk ke Dashboard</span>

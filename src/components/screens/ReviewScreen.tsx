@@ -138,7 +138,7 @@ export const ReviewScreen: React.FC = () => {
               PEMANDU WISATA ANDA
             </span>
             <h3 className="text-lg font-extrabold text-[#19324d]">
-              {activeBooking.guide?.name || 'Bambang Pamungkas'}
+              {activeBooking.guide?.name || 'Pemandu ZHS'}
             </h3>
             <p className="text-xs text-slate-500">{activeBooking.title}</p>
           </div>

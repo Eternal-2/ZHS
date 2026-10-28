@@ -205,6 +205,6 @@ export const AI_KNOWLEDGE_BASE = [
   {
     topic: 'refund',
     title: 'Kebijakan Refund & Pembatalan',
-    content: 'Pembatalan H-3: Pengembalian dana 100%. Pembatalan H-1: Pengembalian dana 70%. Pembatalan H-0: Pengembalian dana 30% atau eskalasi ke Tim Bantuan ZHS jika keadaan darurat.'
+    content: 'Pembatalan H-3 atau lebih: Pengembalian dana 100%. Pembatalan H-1: Pengembalian dana 50%. Pembatalan H-0: Tidak ada pengembalian dana, atau eskalasi ke Tim Bantuan ZHS jika keadaan darurat.'
   }
 ];

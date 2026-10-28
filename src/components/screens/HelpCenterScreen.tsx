@@ -16,7 +16,7 @@ export const HelpCenterScreen: React.FC = () => {
     },
     {
       sender: 'user',
-      text: 'Saya ingin menanyakan tentang status reservasi wisata BK-10245 dan kebijakan pengembalian dana.',
+      text: 'Saya ingin menanyakan tentang status reservasi wisata dan kebijakan pengembalian dana.',
       time: '09:01 WIB'
     },
     {

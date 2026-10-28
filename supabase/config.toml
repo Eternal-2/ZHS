@@ -1,0 +1,3 @@
+# Konfigurasi Supabase CLI (supabase/config.toml). Hanya bagian yang perlu diubah:
+[functions.payment-webhook]
+verify_jwt = false   # dipanggil Midtrans (tanpa JWT Supabase); dilindungi signature_key

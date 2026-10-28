@@ -18,11 +18,11 @@ export const GuideDashboard: React.FC = () => {
     guideWithdrawableBalance, 
     withdrawGuideBalance, 
     guideValidateQr, 
-    guideAcceptLeadBooking,
     guideManagedDestinations,
     setGuideManagedDestinations,
     openDirectChat,
     markTourCompleted,
+    setActiveBookingById,
     setActiveScreen
   } = useAppStore();
 
@@ -34,7 +34,6 @@ export const GuideDashboard: React.FC = () => {
   const [qrModalOpen, setQrModalOpen] = useState(false);
   const [qrFeedback, setQrFeedback] = useState<{ success?: boolean; message?: string } | null>(null);
   const [withdrawSuccess, setWithdrawSuccess] = useState(false);
-  const [leadAccepted, setLeadAccepted] = useState(false);
 
   // Guide destination selections state
   const [selectedDests, setSelectedDests] = useState<string[]>(
@@ -47,14 +46,16 @@ export const GuideDashboard: React.FC = () => {
     b => b.status === 'confirmed_by_guide' || b.status === 'in_tour'
   );
   const completedTours = userBookings.filter(b => b.status === 'completed');
+  // Permintaan baru: sudah dibayar (dana di escrow), menunggu konfirmasi pemandu
+  const pendingRequests = userBookings.filter(b => b.status === 'escrow_locked');
 
   // Total escrow locked in active tours
   const escrowLockedAmount = activeTours.reduce((acc, b) => acc + b.totalAmount, 0);
 
-  const handleValidateQr = (e: React.FormEvent) => {
+  const handleValidateQr = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!qrInput.trim()) return;
-    const res = guideValidateQr(qrInput.trim());
+    const res = await guideValidateQr(qrInput.trim());
     setQrFeedback(res);
     if (res.success) {
       setTimeout(() => {
@@ -70,11 +71,6 @@ export const GuideDashboard: React.FC = () => {
     withdrawGuideBalance();
     setWithdrawSuccess(true);
     setTimeout(() => setWithdrawSuccess(false), 3000);
-  };
-
-  const handleAcceptLead = () => {
-    guideAcceptLeadBooking();
-    setLeadAccepted(true);
   };
 
   const handleToggleDestination = (destId: string) => {
@@ -134,7 +130,7 @@ export const GuideDashboard: React.FC = () => {
                 </div>
 
                 <h1 className="text-xl sm:text-2xl font-black text-[#19324d]">
-                  {currentUser?.name || 'Bambang Pamungkas, S.Sos'}
+                  {currentUser?.name}
                 </h1>
 
                 <p className="text-xs text-slate-500 flex items-center gap-3">
@@ -441,7 +437,7 @@ export const GuideDashboard: React.FC = () => {
                       <div className="space-y-1">
                         <span className="text-slate-400 font-medium block">WISATAWAN & PESERTA</span>
                         <strong className="text-slate-800 block text-sm">
-                          Niceguymo ({tour.participants} Orang)
+                          {tour.touristName || 'Wisatawan'} ({tour.participants} Orang)
                         </strong>
                         <span className="text-slate-500 text-[11px]">
                           Rasio 1 Pemandu untuk {tour.participants} Peserta (Sesuai Standar)
@@ -520,45 +516,40 @@ export const GuideDashboard: React.FC = () => {
                   </h4>
                 </div>
                 <span className="text-[11px] font-bold text-amber-800 bg-amber-100 px-2.5 py-0.5 rounded-full">
-                  Batas Waktu: 20 Jam
+                  Batas Waktu: 24 Jam
                 </span>
               </div>
 
-              {!leadAccepted ? (
-                <div className="bg-white border border-blue-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div className="space-y-1 text-xs">
-                    <strong className="text-sm text-[#19324d] block font-bold">
-                      Wisatawan Ramadhan (2 Peserta) • Tur Lembah Hijau & Mata Air Asri
-                    </strong>
-                    <p className="text-slate-600">
-                      Tanggal: 25 Oktober 2026 • Bundling Kopi & Oleh-oleh Desa Cihanjawar
-                    </p>
-                    <span className="text-emerald-700 font-bold block">
-                      Estimasi Escrow: Rp 81.000 (Sesuai Tarif Anda)
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      onClick={() => { guideAcceptLeadBooking(); setActiveScreen('guide-booking-request'); }}
-                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-sm transition-all flex items-center gap-1"
-                    >
-                      <Check className="w-3.5 h-3.5" />
-                      <span>Tinjau Booking</span>
-                    </button>
-                    <button
-                      onClick={() => alert('Permintaan dialihkan ke pemandu lain di matching pool.')}
-                      className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-xl transition-all"
-                    >
-                      Tolak
-                    </button>
-                  </div>
-                </div>
+              {pendingRequests.length === 0 ? (
+                <p className="text-xs text-slate-500">Belum ada permintaan tur baru yang menunggu konfirmasi Anda.</p>
               ) : (
-                <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl text-xs text-emerald-900 font-bold flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                  <span>Permintaan berhasil diterima! Tur kini masuk ke daftar reservasi aktif Anda.</span>
-                </div>
+                pendingRequests.map((req) => (
+                  <div
+                    key={req.id}
+                    className="bg-white border border-blue-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                  >
+                    <div className="space-y-1 text-xs">
+                      <strong className="text-sm text-[#19324d] block font-bold">
+                        {req.participants} Peserta • {req.title}
+                      </strong>
+                      <p className="text-slate-600">
+                        Tanggal: {req.date}{req.bundledUMKM ? ` • Bundling ${req.bundledUMKM.name}` : ''}
+                      </p>
+                      <span className="text-emerald-700 font-bold block">
+                        Dana Escrow Terkunci: Rp {req.totalAmount.toLocaleString('id-ID')}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        onClick={() => { setActiveBookingById(req.id); setActiveScreen('guide-booking-request'); }}
+                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-sm transition-all flex items-center gap-1"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Tinjau Booking</span>
+                      </button>
+                    </div>
+                  </div>
+                ))
               )}
             </div>
 
@@ -587,8 +578,8 @@ export const GuideDashboard: React.FC = () => {
                   <div className="flex items-center gap-3.5">
                     <div className="relative">
                       <img
-                        src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=200&q=80"
-                        alt="Niceguymo"
+                        src={tour.touristAvatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=200&q=80'}
+                        alt={tour.touristName || 'Wisatawan'}
                         className="w-12 h-12 rounded-full object-cover border border-slate-200"
                       />
                       <span className="w-3 h-3 rounded-full bg-emerald-500 border-2 border-white absolute bottom-0 right-0" />
@@ -597,14 +588,14 @@ export const GuideDashboard: React.FC = () => {
                     <div className="space-y-0.5">
                       <div className="flex items-center gap-2">
                         <strong className="text-sm font-bold text-[#19324d]">
-                          Niceguymo
+                          {tour.touristName || 'Wisatawan'}
                         </strong>
                         <span className="font-mono text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">
                           {tour.id}
                         </span>
                       </div>
                       <p className="text-xs text-slate-600 line-clamp-1">
-                        "Halo Mas Bambang! Senang bisa dipandu Mas Bambang..."
+                        Buka percakapan untuk melihat pesan terbaru
                       </p>
                       <span className="text-[10px] text-slate-400">
                         {tour.title} • {tour.date}

@@ -22,7 +22,7 @@ export const ProfileScreen: React.FC = () => {
   const [isGuideMode, setIsGuideMode] = useState(false);
 
   // Edit profile form state (exact as Figma Page 18)
-  const [name, setName] = useState(currentUser?.name || 'Niceguymo');
+  const [name, setName] = useState(currentUser?.name || '');
   const [gender, setGender] = useState('Laki-laki');
   const [birthDate, setBirthDate] = useState('08/12/1995');
   const [phone, setPhone] = useState(currentUser?.phone || '+62 812 3456 7890');
@@ -272,7 +272,7 @@ export const ProfileScreen: React.FC = () => {
               />
               <div>
                 <h2 className="text-xl font-extrabold text-[#19324d] dark:text-white">
-                  {currentUser?.name || 'Niceguymo'}
+                  {currentUser?.name}
                 </h2>
                 <button
                   onClick={() => setIsEditing(true)}

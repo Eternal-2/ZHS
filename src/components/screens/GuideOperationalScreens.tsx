@@ -32,7 +32,7 @@ export const GuideStartTourScreen: React.FC = () => {
   const [qrInput, setQrInput] = useState('');
   const [qrResult, setQrResult] = useState<{ success: boolean; message: string } | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([
-    { name: 'Niceguymo', code: activeBooking.checkInQrCode || 'ZHS-QR-BK99201', checkedIn: false },
+    { name: activeBooking.touristName || 'Wisatawan', code: activeBooking.checkInQrCode, checkedIn: false },
     { name: 'Peserta 2', code: 'ZHS-QR-GUEST2', checkedIn: false },
     { name: 'Peserta 3', code: 'ZHS-QR-GUEST3', checkedIn: false },
   ]);
@@ -591,7 +591,7 @@ export const GuideNoShowReportScreen: React.FC = () => {
         {/* Booking Info */}
         <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm text-xs space-y-2">
           <h3 className="text-sm font-bold text-[#19324d] uppercase tracking-wider">Detail Booking</h3>
-          <p><strong>Wisatawan:</strong> Niceguymo</p>
+          <p><strong>Wisatawan:</strong> {activeBooking.touristName || 'Wisatawan'}</p>
           <p><strong>Tur:</strong> {activeBooking.title}</p>
           <p><strong>Jadwal:</strong> {activeBooking.date}</p>
           <p><strong>Titik Temu:</strong> {activeBooking.meetingPoint}</p>

@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useAppStore } from './store/useAppStore';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { LoginScreen } from './components/screens/LoginScreen';
@@ -41,7 +42,20 @@ import {
 } from './components/screens/GuideOperationalScreens';
 
 export function App() {
-  const { activeScreen, darkMode } = useAppStore();
+  const { activeScreen, darkMode, catalogReady, initApp } = useAppStore();
+
+  // Muat katalog dari Supabase dan pulihkan sesi login saat aplikasi dibuka
+  useEffect(() => {
+    void initApp();
+  }, [initApp]);
+
+  if (!catalogReady) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#f8fafc] text-[#19324d] text-sm font-semibold">
+        Memuat Zam Zam Hidden Spot…
+      </div>
+    );
+  }
 
   const isAuthScreen = activeScreen === 'welcome' || activeScreen === 'login' || activeScreen === 'register';
   const isGuideRegistrationScreen = (

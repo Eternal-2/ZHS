@@ -1,7 +1,18 @@
 import { create } from 'zustand';
 import type { Guide, UMKM, Destination } from '../data/mockData';
 import { MOCK_GUIDES, MOCK_UMKM, MOCK_DESTINATIONS, AI_KNOWLEDGE_BASE } from '../data/mockData';
-import { callGeminiApi, DEFAULT_GEMINI_API_KEY } from '../services/geminiService';
+import { callGeminiApi } from '../services/geminiService';
+import { supabase } from '../lib/supabase';
+import { defaultTourDate } from '../lib/dates';
+import { loadCatalog } from '../services/catalogService';
+import { fetchCurrentUser, signInWithPassword, signOut, updateProfileRow } from '../services/authService';
+import type { PaymentInfo } from '../services/bookingService';
+import {
+  fetchMyBookings, fetchBookingByDbId, createBooking, createPayment, subscribeBookingStatus,
+  cancelBookingRpc, guideConfirmRpc, guideStartTourRpc, completeTourRpc, redeemVoucherRpc,
+  requestWithdrawalRpc, fetchWalletBalance, fetchPoints, runSmartMatch,
+  fetchChat, sendChat, subscribeChat, fetchGuideDestinations, saveGuideDestinations
+} from '../services/bookingService';
 import type { DestinationItem, TransportOption, FoodCartItem } from '../data/bookingExtras';
 import { AVAILABLE_DESTINATIONS, TRANSPORT_OPTIONS, calculatePerPaxPrice } from '../data/bookingExtras';
 
@@ -72,7 +83,11 @@ export interface User {
 }
 
 export interface BookingState {
-  id: string;
+  id: string;            // kode booking yang tampil di UI (BK-12345)
+  dbId?: string;         // uuid baris di database
+  touristName?: string;  // diisi untuk tampilan pemandu
+  touristAvatar?: string;
+  voucherCode?: string;
   title: string;
   destination: string;
   destinationId?: string;
@@ -87,7 +102,7 @@ export interface BookingState {
   originalAmount: number;
   discountAmount: number;
   paymentMethod: 'QRIS' | 'BCA Virtual Account' | 'GoPay' | 'ShopeePay';
-  status: 'draft' | 'pending_payment' | 'escrow_locked' | 'confirmed_by_guide' | 'in_tour' | 'completed' | 'cancelled';
+  status: 'draft' | 'pending_payment' | 'escrow_locked' | 'confirmed_by_guide' | 'in_tour' | 'completed' | 'cancelled' | 'disputed' | 'expired';
   checkInQrCode: string;
   meetingPoint: string;
   bundledUMKM?: UMKM | null;
@@ -175,164 +190,40 @@ export interface DirectChatMessage {
   timestamp: string;
 }
 
-export const INITIAL_DIRECT_CHAT_MESSAGES: DirectChatMessage[] = [
-  {
-    id: 'dm-1',
-    bookingId: 'BK-99201',
-    senderRole: 'pemandu',
-    senderName: 'Bambang Pamungkas',
-    senderAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80',
-    text: 'Halo Kak! Terima kasih telah memesan tur Situ Buleud & Air Mancur Sri Baduga via ZHS. Pembayaran Anda telah terproteksi aman di sistem Escrow ZHS.',
-    timestamp: '10:15 WIB'
-  },
-  {
-    id: 'dm-2',
-    bookingId: 'BK-99201',
-    senderRole: 'wisatawan',
-    senderName: 'Niceguymo',
-    senderAvatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=200&q=80',
-    text: 'Halo Mas Bambang! Senang bisa dipandu Mas Bambang. Untuk meeting point di Plaza Barat, patokannya dekat apa ya Mas?',
-    timestamp: '10:18 WIB'
-  },
-  {
-    id: 'dm-3',
-    bookingId: 'BK-99201',
-    senderRole: 'pemandu',
-    senderName: 'Bambang Pamungkas',
-    senderAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80',
-    text: 'Patokannya tepat di samping gapura ukiran Sunda dekat pos informasi ZHS. Saya akan mengenakan rompi resmi Pemandu ZHS warna navy dengan badge BNSP.',
-    timestamp: '10:20 WIB'
-  }
-];
+export const INITIAL_DIRECT_CHAT_MESSAGES: DirectChatMessage[] = [];
 
-const DEFAULT_BOOKING: BookingState = {
-  id: 'BK-10245',
-  title: AVAILABLE_DESTINATIONS[0].title,
-  destination: AVAILABLE_DESTINATIONS[0].location,
-  destinationId: AVAILABLE_DESTINATIONS[0].id,
-  destinationImage: AVAILABLE_DESTINATIONS[0].image,
-  unitPrice: AVAILABLE_DESTINATIONS[0].unitPrice,
-  guide: MOCK_GUIDES[0],
-  coGuides: [],
-  guidesCount: 1,
-  date: '1 April 2026',
-  participants: 3,
-  originalAmount: 105000,
-  discountAmount: 0,
-  totalAmount: 105000,
-  paymentMethod: 'QRIS',
-  status: 'pending_payment',
-  checkInQrCode: 'ZHS-QR-BK10245',
-  meetingPoint: 'Stasiun Purwakarta',
-  bundledUMKM: MOCK_UMKM[0],
-  selectedTransport: TRANSPORT_OPTIONS[0],
-  foodAddOns: [],
-  includeTransport: false,
-  notes: '',
-  createdAt: '1 April 2026'
-};
-
-export const INITIAL_BOOKINGS: BookingState[] = [
-  {
-    id: 'BK-99201',
-    title: 'Trip to Situ Buleud & Air Mancur Sri Baduga',
-    destination: 'Nagri Kidul, Kec. Purwakarta, Kab. Purwakarta',
-    destinationId: 'situ-buleud',
-    destinationImage: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=800&q=80',
-    unitPrice: 35000,
-    guide: MOCK_GUIDES[3], // Bambang Pamungkas
+/** Booking kosong sebagai nilai awal. Dibuat ulang setelah katalog database selesai dimuat. */
+const makeDefaultBooking = (): BookingState => {
+  const dest = AVAILABLE_DESTINATIONS[0];
+  const unit = dest?.unitPrice ?? 0;
+  return {
+    id: 'BK-BARU',
+    title: dest?.title ?? '',
+    destination: dest?.location ?? '',
+    destinationId: dest?.id,
+    destinationImage: dest?.image,
+    unitPrice: unit,
+    guide: MOCK_GUIDES[0] ?? null,
     coGuides: [],
     guidesCount: 1,
-    date: '12 Oktober 2026',
+    date: defaultTourDate(),
     participants: 3,
-    originalAmount: 105000,
+    originalAmount: unit * 3,
     discountAmount: 0,
-    totalAmount: 105000,
+    totalAmount: unit * 3,
     paymentMethod: 'QRIS',
-    status: 'confirmed_by_guide',
-    checkInQrCode: 'ZHS-QR-BK99201',
-    meetingPoint: 'Plaza Air Mancur Gerbang Barat',
-    bundledUMKM: MOCK_UMKM[0],
-    selectedTransport: TRANSPORT_OPTIONS[0],
-    foodAddOns: [
-      {
-        cartId: 'food-maranggi-init',
-        itemId: 'food-maranggi',
-        name: 'Sate Maranggi Plered Heritage',
-        umkmName: 'Warung Bu Yeti',
-        selectedVariant: 'Paket Nasi Timbel',
-        variantPriceDiff: 0,
-        selectedSpicy: 'Sedang (Iris Cabai Rawit)',
-        selectedSides: [],
-        unitPrice: 35000,
-        quantity: 2,
-        notes: '',
-        totalPrice: 70000
-      }
-    ],
-    includeTransport: false,
-    notes: 'Sediakan payung jika gerimis',
-    createdAt: '10 Oktober 2026'
-  },
-  {
-    id: 'BK-88104',
-    title: 'Tur Sunrise Savana Gunung Bromo',
-    destination: 'Sumberkedawung, Kec. Leces, Kab. Probolinggo',
-    destinationId: 'bromo-sunrise',
-    destinationImage: 'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?auto=format&fit=crop&w=800&q=80',
-    unitPrice: 360000,
-    guide: MOCK_GUIDES[0], // Ahmad Fauzi
-    coGuides: [],
-    guidesCount: 1,
-    date: '28 September 2026',
-    participants: 2,
-    originalAmount: 720000,
-    discountAmount: 0,
-    totalAmount: 720000,
-    paymentMethod: 'BCA Virtual Account',
-    status: 'completed',
-    checkInQrCode: 'ZHS-QR-BK88104',
-    meetingPoint: 'Lobby Hotel Bromo Permai',
-    bundledUMKM: MOCK_UMKM[1],
-    selectedTransport: TRANSPORT_OPTIONS[1],
-    foodAddOns: [],
-    includeTransport: true,
-    notes: 'Bawa jaket tebal',
-    createdAt: '25 September 2026',
-    completedAt: '28 September 2026, 14:00 WIB',
-    reviewRating: 5,
-    reviewComment: 'Pengalaman luar biasa melihat sunrise di Bromo bersama Mas Ahmad Fauzi. Penjelasan geologi dan kearifan lokal Tengger sangat berkesan!'
-  },
-  {
-    id: 'BK-76412',
-    title: 'Pasir Langlang Panyawangan (Hutan Pinus)',
-    destination: 'Desa Cihanjawar, Kec. Bojong/Wanayasa, Purwakarta',
-    destinationId: 'pasir-langlang',
-    destinationImage: 'https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=800&q=80',
-    unitPrice: 40500,
-    guide: MOCK_GUIDES[1], // Siti Aminah
-    coGuides: [],
-    guidesCount: 1,
-    date: '15 September 2026',
-    participants: 4,
-    originalAmount: 162000,
-    discountAmount: 0,
-    totalAmount: 162000,
-    paymentMethod: 'GoPay',
-    status: 'completed',
-    checkInQrCode: 'ZHS-QR-BK76412',
-    meetingPoint: 'Pintu Gerbang Wanayasa',
-    bundledUMKM: MOCK_UMKM[0],
-    selectedTransport: TRANSPORT_OPTIONS[0],
+    status: 'draft',
+    checkInQrCode: '',
+    meetingPoint: dest?.meetingPoints[0]?.name ?? '',
+    bundledUMKM: MOCK_UMKM[0] ?? null,
+    selectedTransport: TRANSPORT_OPTIONS[0] ?? null,
     foodAddOns: [],
     includeTransport: false,
     notes: '',
-    createdAt: '12 September 2026',
-    completedAt: '15 September 2026, 17:30 WIB',
-    reviewRating: 5,
-    reviewComment: 'Pemandu sangat ramah, udara sejuk pinus dan teh hangat lokal sangat menyegarkan.'
-  }
-];
+    createdAt: ''
+  };
+};
+
 
 interface AppState {
   currentUser: User | null;
@@ -342,7 +233,10 @@ interface AppState {
   isAiDrawerOpen: boolean;
   isCancelModalOpen: boolean;
   isAiLoading: boolean;
-  geminiApiKey: string;
+  catalogReady: boolean;
+  paymentInfo: PaymentInfo | null;
+  bookingBusy: boolean;
+  bookingError: string | null;
   chatMessages: ChatMessage[];
   
   // Real booking flow
@@ -368,13 +262,14 @@ interface AppState {
   setActiveScreen: (screen: ScreenType) => void;
   setDarkMode: (val: boolean) => void;
   setSelectedLanguage: (lang: string) => void;
-  setGeminiApiKey: (key: string) => void;
-  login: (role: UserRole, email?: string) => void;
+  initApp: () => Promise<void>;
+  hydrateUser: (opts?: { navigate?: boolean }) => Promise<void>;
+  signIn: (email: string, password: string) => Promise<void>;
   logout: () => void;
   toggleAiDrawer: (open?: boolean) => void;
   toggleCancelModal: (open?: boolean) => void;
   sendAiMessage: (text: string) => Promise<void>;
-  redeemVoucher: (pointsCost: number, voucherCode: string) => void;
+  redeemVoucher: (pointsCost: number, voucherCode: string) => Promise<void>;
   
   // Enhanced booking actions
   initDraftBooking: (dest?: DestinationItem | string, guide?: Guide | string) => void;
@@ -390,19 +285,19 @@ interface AppState {
   removeFoodAddOn: (cartId: string) => void;
   clearFoodAddOns: () => void;
   applyPointsDiscount: () => void;
-  processPaymentSuccess: () => void;
-  cancelActiveBooking: () => void;
+  processPaymentSuccess: () => Promise<void>;
+  cancelActiveBooking: () => Promise<void>;
   updateUserProfile: (profile: Partial<User>) => void;
 
   setSmartMatchCriteria: (criteria: Partial<SmartMatchCriteria>) => void;
-  executeSmartMatch: () => void;
+  executeSmartMatch: () => Promise<void>;
   startBooking: (guide: Guide, destination?: Destination, bundledUMKM?: UMKM) => void;
-  confirmPayment: (method: 'QRIS' | 'BCA Virtual Account' | 'GoPay' | 'ShopeePay') => void;
-  guideConfirmBooking: () => void;
+  confirmPayment: (method: 'QRIS' | 'BCA Virtual Account' | 'GoPay' | 'ShopeePay') => Promise<void>;
+  guideConfirmBooking: () => Promise<void>;
   setActiveBookingById: (bookingId: string) => void;
   markTourCompleted: (bookingId?: string) => void;
-  completeTourCheckOut: (rating: number, reviewText: string, bookingId?: string) => void;
-  cancelBookingById: (bookingId: string) => void;
+  completeTourCheckOut: (rating: number, reviewText: string, bookingId?: string) => Promise<void>;
+  cancelBookingById: (bookingId?: string) => Promise<void>;
 
   // Authentication redirection & Direct Chat
   redirectAfterLogin: ScreenType | null;
@@ -410,18 +305,54 @@ interface AppState {
   directChatMessages: DirectChatMessage[];
   activeChatBookingId: string;
   setActiveChatBookingId: (bookingId: string) => void;
-  sendDirectChatMessage: (bookingId: string, text: string) => void;
-  openDirectChat: (bookingId?: string) => void;
+  sendDirectChatMessage: (bookingId: string, text: string) => Promise<void>;
+  openDirectChat: (bookingId?: string) => Promise<void>;
 
   // Guide operational flow
   guideAvailability: boolean;
-  toggleGuideAvailability: () => void;
+  toggleGuideAvailability: () => Promise<void>;
   guideWithdrawableBalance: number;
-  withdrawGuideBalance: () => void;
-  guideValidateQr: (qrCode: string) => { success: boolean; message: string };
-  guideAcceptLeadBooking: () => void;
+  withdrawGuideBalance: () => Promise<void>;
+  guideValidateQr: (qrCode: string) => Promise<{ success: boolean; message: string }>;
   guideManagedDestinations: string[];
-  setGuideManagedDestinations: (destIds: string[]) => void;
+  setGuideManagedDestinations: (destIds: string[]) => Promise<void>;
+}
+
+// ---------- helper realtime ----------
+let authListenerBound = false;
+let stopPayment: (() => void) | null = null;
+let stopChat: (() => void) | null = null;
+const stopChatWatcher = () => { stopChat?.(); stopChat = null; };
+const stopWatchers = () => { stopPayment?.(); stopPayment = null; stopChatWatcher(); };
+
+const chatContext = (booking: BookingState, me: User) => {
+  const myRole: 'wisatawan' | 'pemandu' = me.role === 'pemandu' ? 'pemandu' : 'wisatawan';
+  const guide = booking.guide;
+  return {
+    me: me.id,
+    myRole,
+    names: { me: me.name, other: myRole === 'pemandu' ? 'Wisatawan' : guide?.name ?? 'Pemandu' },
+    avatars: { me: me.avatar, other: myRole === 'pemandu' ? '' : guide?.avatar ?? '' }
+  };
+};
+
+/** Pantau status booking: begitu webhook pembayaran mengubahnya, layar otomatis pindah ke "berhasil". */
+function watchBookingPayment(dbId: string, set: any) {
+  stopPayment?.();
+  stopPayment = subscribeBookingStatus(dbId, async (status) => {
+    if (status === 'pending_payment') return;
+    const fresh = await fetchBookingByDbId(dbId);
+    if (!fresh) return;
+    set((state: AppState) => ({
+      activeBooking: state.activeBooking.dbId === dbId ? fresh : state.activeBooking,
+      userBookings: state.userBookings.map((b) => (b.dbId === dbId ? fresh : b)),
+      activeScreen:
+        state.activeScreen === 'payment-qris'
+          ? status === 'cancelled' || status === 'expired' ? 'payment-failed' : 'payment-success'
+          : state.activeScreen
+    }));
+    stopPayment?.(); stopPayment = null;
+  });
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -432,9 +363,9 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Direct chat between guide and booking customer
   directChatMessages: INITIAL_DIRECT_CHAT_MESSAGES,
-  activeChatBookingId: 'BK-99201',
+  activeChatBookingId: '',
   guideAvailability: true,
-  guideWithdrawableBalance: 4200000,
+  guideWithdrawableBalance: 0,
 
   activeScreen: 'welcome',
   darkMode: false,
@@ -442,13 +373,16 @@ export const useAppStore = create<AppState>((set, get) => ({
   isAiDrawerOpen: false,
   isCancelModalOpen: false,
   isAiLoading: false,
-  geminiApiKey: (typeof window !== 'undefined' && localStorage.getItem('zhs_gemini_api_key')) || DEFAULT_GEMINI_API_KEY,
   appliedVoucherCode: null,
-  pointsBalance: 2450,
+  pointsBalance: 0,
+  catalogReady: false,
+  paymentInfo: null,
+  bookingBusy: false,
+  bookingError: null,
 
   // Real booking flow: initialized with sample realistic booking history
-  activeBooking: INITIAL_BOOKINGS[0],
-  userBookings: INITIAL_BOOKINGS,
+  activeBooking: makeDefaultBooking(),
+  userBookings: [],
   currentDraftBooking: null,
 
   // Compatibility stubs for modals & previews
@@ -462,7 +396,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   smartMatchCriteria: {
     interest: 'Hidden Spot Alam & Mata Air',
     destinationQuery: 'Purwakarta & Sekitarnya',
-    date: '1 April 2026',
+    date: defaultTourDate(),
     budget: 450000,
     participants: 3,
     useGps: true,
@@ -483,75 +417,63 @@ export const useAppStore = create<AppState>((set, get) => ({
   setDarkMode: (val) => set({ darkMode: val }),
   setSelectedLanguage: (lang) => set({ selectedLanguage: lang }),
   
-  setGeminiApiKey: (key) => {
-    localStorage.setItem('zhs_gemini_api_key', key);
-    set({ geminiApiKey: key });
-  },
-
-  login: (role, identifier) => {
-    let user: User;
-    if (role === 'pemandu') {
-      user = {
-        id: 'g-4',
-        name: identifier && identifier.length > 2 && !identifier.includes('@') ? identifier : 'Bambang Pamungkas',
-        username: 'bambang_guide',
-        email: identifier && identifier.includes('@') ? identifier : 'bambang.guide@zamzam.com',
-        role: 'pemandu',
-        phone: '+62 813 9876 5432',
-        avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80',
-        points: 4800,
-        level: 'Master Guide BNSP Level 3',
-        isVerified: true,
-        city: 'Purwakarta',
-        country: 'Indonesia',
-        languages: ['Indonesia', 'Sunda', 'English'],
-        travelPreferences: ['Cagar Budaya', 'Wisata Air Mancur', 'Heritage Pasundan'],
-        emergencyContact: {
-          name: 'Himpunan Pramuwisata Indonesia (HPI)',
-          phone: '+62 811 9999 8888'
-        }
-      };
-    } else {
-      user = {
-        id: 'u-1',
-        name: identifier && identifier.length > 2 && !identifier.includes('@') ? identifier : 'Niceguymo',
-        username: 'niceguymo',
-        email: identifier && identifier.includes('@') ? identifier : 'bigmompruy@gmail.com',
-        role: 'wisatawan',
-        phone: '+62 812 3456 7890',
-        avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=200&q=80',
-        points: 2450,
-        level: 'Level 5: Heritage Explorer',
-        isVerified: true,
-        address: 'Jl. Melati No. 45',
-        city: 'Jakarta',
-        country: 'Indonesia',
-        languages: ['Indonesia', 'Inggris'],
-        travelPreferences: ['Alam', 'Budaya', 'Petualangan'],
-        emergencyContact: {
-          name: 'Windah Basudara',
-          phone: '+62 811 2222 3333'
-        }
-      };
-    }
-
-    const { redirectAfterLogin } = get();
-    if (redirectAfterLogin && role === 'wisatawan') {
-      set({
-        currentUser: user,
-        activeScreen: redirectAfterLogin,
-        redirectAfterLogin: null
-      });
-    } else {
-      set({
-        currentUser: user,
-        activeScreen: role === 'pemandu' ? 'guide-dashboard' : 'home',
-        redirectAfterLogin: null
+  initApp: async () => {
+    await loadCatalog();
+    set({ catalogReady: true, activeBooking: makeDefaultBooking() });
+    await get().hydrateUser();
+    if (!authListenerBound) {
+      authListenerBound = true;
+      supabase.auth.onAuthStateChange((event) => {
+        // jangan memanggil supabase secara sinkron di dalam callback ini
+        setTimeout(() => {
+          if (event === 'SIGNED_IN' && !get().currentUser) void get().hydrateUser({ navigate: true });
+          if (event === 'SIGNED_OUT') set({ currentUser: null, userBookings: [], activeScreen: 'welcome' });
+        }, 0);
       });
     }
   },
 
-  logout: () => set({ currentUser: null, activeScreen: 'welcome', redirectAfterLogin: null }),
+  hydrateUser: async (opts) => {
+    const user = await fetchCurrentUser();
+    if (!user) return;
+    const isGuide = user.role === 'pemandu';
+    const [bookings, balance, managed] = await Promise.all([
+      fetchMyBookings(user.id, user.role).catch(() => [] as BookingState[]),
+      isGuide ? fetchWalletBalance(user.id).catch(() => 0) : Promise.resolve(0),
+      isGuide ? fetchGuideDestinations(user.id).catch(() => [] as string[]) : Promise.resolve(null)
+    ]);
+    const { redirectAfterLogin, activeScreen } = get();
+    const onAuthScreen = ['welcome', 'login', 'register'].includes(activeScreen);
+    let next: ScreenType = activeScreen;
+    if (opts?.navigate || onAuthScreen) {
+      next = redirectAfterLogin && !isGuide ? redirectAfterLogin : isGuide ? 'guide-dashboard' : 'home';
+    }
+    set((state) => ({
+      currentUser: user,
+      userBookings: bookings,
+      activeBooking: state.currentDraftBooking ? state.activeBooking : bookings[0] ?? state.activeBooking,
+      pointsBalance: user.points,
+      guideWithdrawableBalance: balance,
+      guideManagedDestinations: managed ?? state.guideManagedDestinations,
+      activeScreen: next,
+      redirectAfterLogin: null
+    }));
+  },
+
+  signIn: async (email, password) => {
+    await signInWithPassword(email, password); // melempar error jika email/password salah
+    await get().hydrateUser({ navigate: true });
+  },
+
+  logout: () => {
+    stopWatchers();
+    void signOut();
+    set({
+      currentUser: null, userBookings: [], activeBooking: makeDefaultBooking(), currentDraftBooking: null,
+      pointsBalance: 0, guideWithdrawableBalance: 0, directChatMessages: [], paymentInfo: null,
+      activeScreen: 'welcome', redirectAfterLogin: null
+    });
+  },
 
   toggleAiDrawer: (open) => set((state) => ({ 
     isAiDrawerOpen: open !== undefined ? open : !state.isAiDrawerOpen 
@@ -562,47 +484,34 @@ export const useAppStore = create<AppState>((set, get) => ({
   })),
 
   sendAiMessage: async (text) => {
-    const userMsg: ChatMessage = {
-      id: `usr-${Date.now()}`,
-      sender: 'user',
-      text,
-      timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB'
-    };
-
-    set((state) => ({ 
-      chatMessages: [...state.chatMessages, userMsg],
+    const time = () => new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
+    const history = get().chatMessages;
+    set((state) => ({
+      chatMessages: [...state.chatMessages, { id: `usr-${Date.now()}`, sender: 'user', text, timestamp: time() }],
       isAiLoading: true
     }));
-
+    let reply: string;
     try {
-      const history = get().chatMessages;
-      const key = get().geminiApiKey;
-      const aiResponse = await callGeminiApi(text, history, key);
-
-      const aiMsg: ChatMessage = {
-        id: `ai-${Date.now()}`,
-        sender: 'ai',
-        text: aiResponse,
-        timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB',
-        isGemini: true
-      };
-
-      set((state) => ({ 
-        chatMessages: [...state.chatMessages, aiMsg],
-        isAiLoading: false
-      }));
+      reply = await callGeminiApi(text, history);
     } catch (err) {
       console.error('Error fetching AI response:', err);
-      set({ isAiLoading: false });
+      reply = 'Maaf, asisten AI sedang tidak dapat dihubungi. Silakan coba beberapa saat lagi.';
     }
+    set((state) => ({
+      chatMessages: [...state.chatMessages, { id: `ai-${Date.now()}`, sender: 'ai', text: reply, timestamp: time(), isGemini: true }],
+      isAiLoading: false
+    }));
   },
 
-  redeemVoucher: (pointsCost, voucherCode) => {
-    set((state) => ({
-      pointsBalance: Math.max(0, state.pointsBalance - pointsCost),
-      appliedVoucherCode: voucherCode,
-      activeScreen: 'voucher-success'
-    }));
+  redeemVoucher: async (_pointsCost, voucherCode) => {
+    try {
+      await redeemVoucherRpc(voucherCode); // potong poin & catat voucher di server
+      const user = get().currentUser;
+      const points = user ? await fetchPoints(user.id) : 0;
+      set({ pointsBalance: points, appliedVoucherCode: voucherCode, activeScreen: 'voucher-success' });
+    } catch (err: any) {
+      window.alert(err.message ?? 'Gagal menukar voucher');
+    }
   },
 
   initDraftBooking: (dest?: DestinationItem | string, guide?: Guide | string) => {
@@ -641,7 +550,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       guide: targetGuide,
       coGuides: [],
       guidesCount: initialGuidesCount,
-      date: '1 April 2026',
+      date: defaultTourDate(),
       participants: initialParticipants,
       originalAmount: targetDest.unitPrice * initialParticipants,
       discountAmount: 0,
@@ -664,7 +573,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setBookingDestination: (dest) => {
     set((state) => {
-      const draft = state.currentDraftBooking || state.activeBooking || DEFAULT_BOOKING;
+      const draft = state.currentDraftBooking || state.activeBooking || makeDefaultBooking();
       const updated = computeBookingTotals({
         ...draft,
         title: dest.title,
@@ -680,7 +589,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setBookingParticipants: (num) => {
     set((state) => {
-      const draft = state.currentDraftBooking || state.activeBooking || DEFAULT_BOOKING;
+      const draft = state.currentDraftBooking || state.activeBooking || makeDefaultBooking();
       const p = Math.max(1, num);
       const recommendedGuides = Math.ceil(p / 10);
       const updated = computeBookingTotals({
@@ -718,7 +627,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setBookingGuidesCount: (count) => {
     set((state) => {
-      const draft = state.currentDraftBooking || state.activeBooking || DEFAULT_BOOKING;
+      const draft = state.currentDraftBooking || state.activeBooking || makeDefaultBooking();
       const updated = computeBookingTotals({
         ...draft,
         guidesCount: Math.max(1, count)
@@ -729,7 +638,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setBookingTransport: (transport) => {
     set((state) => {
-      const draft = state.currentDraftBooking || state.activeBooking || DEFAULT_BOOKING;
+      const draft = state.currentDraftBooking || state.activeBooking || makeDefaultBooking();
       const updated = computeBookingTotals({
         ...draft,
         selectedTransport: transport,
@@ -741,7 +650,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   addFoodAddOn: (item) => {
     set((state) => {
-      const draft = state.currentDraftBooking || state.activeBooking || DEFAULT_BOOKING;
+      const draft = state.currentDraftBooking || state.activeBooking || makeDefaultBooking();
       const currentList = draft.foodAddOns || [];
       const existingIdx = currentList.findIndex((i) => i.cartId === item.cartId);
       let newList: FoodCartItem[];
@@ -764,7 +673,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   updateFoodAddOnQty: (cartId, delta) => {
     set((state) => {
-      const draft = state.currentDraftBooking || state.activeBooking || DEFAULT_BOOKING;
+      const draft = state.currentDraftBooking || state.activeBooking || makeDefaultBooking();
       const currentList = draft.foodAddOns || [];
       const newList = currentList
         .map((item) => {
@@ -789,7 +698,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   removeFoodAddOn: (cartId) => {
     set((state) => {
-      const draft = state.currentDraftBooking || state.activeBooking || DEFAULT_BOOKING;
+      const draft = state.currentDraftBooking || state.activeBooking || makeDefaultBooking();
       const currentList = draft.foodAddOns || [];
       const newList = currentList.filter((i) => i.cartId !== cartId);
       const updated = computeBookingTotals({
@@ -802,7 +711,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   clearFoodAddOns: () => {
     set((state) => {
-      const draft = state.currentDraftBooking || state.activeBooking || DEFAULT_BOOKING;
+      const draft = state.currentDraftBooking || state.activeBooking || makeDefaultBooking();
       const updated = computeBookingTotals({
         ...draft,
         foodAddOns: []
@@ -811,107 +720,93 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
   },
 
-  applyPointsDiscount: () => {
-    set((state) => {
-      const draft = state.currentDraftBooking || state.activeBooking;
-      const updated = computeBookingTotals({
-        ...draft,
-        discountAmount: 50000
-      });
-      return {
-        currentDraftBooking: updated,
-        activeBooking: updated
-      };
-    });
+  applyPointsDiscount: async () => {
+    const draft = get().currentDraftBooking || get().activeBooking;
+    try {
+      await redeemVoucherRpc('POIN50K'); // tukar 500 poin -> voucher Rp 50.000 (divalidasi server)
+      const user = get().currentUser;
+      const points = user ? await fetchPoints(user.id) : get().pointsBalance;
+      const updated = computeBookingTotals({ ...draft, discountAmount: 50000, voucherCode: 'POIN50K' });
+      set({ currentDraftBooking: updated, activeBooking: updated, pointsBalance: points });
+    } catch (err: any) {
+      window.alert(err.message ?? 'Poin tidak cukup');
+    }
   },
 
-  processPaymentSuccess: () => {
-    set((state) => {
-      const draft = state.currentDraftBooking || state.activeBooking;
-
-      const finalizedBooking: BookingState = {
-        ...draft,
-        status: 'confirmed_by_guide' // Confirmed in escrow
-      };
-
-      return {
-        userBookings: [finalizedBooking, ...state.userBookings],
-        currentDraftBooking: null,
-        activeBooking: finalizedBooking,
-        activeScreen: 'payment-success'
-      };
-    });
+  // Dipanggil tombol "Cek Status Pembayaran". Status asli datang dari webhook payment gateway.
+  processPaymentSuccess: async () => {
+    const current = get().activeBooking;
+    if (!current.dbId) return;
+    const fresh = await fetchBookingByDbId(current.dbId);
+    if (!fresh) return;
+    if (fresh.status === 'pending_payment') {
+      window.alert('Pembayaran belum kami terima. Selesaikan pembayaran lalu coba lagi.');
+      return;
+    }
+    set((state) => ({
+      activeBooking: fresh,
+      userBookings: state.userBookings.map((b) => (b.dbId === fresh.dbId ? fresh : b)),
+      activeScreen: fresh.status === 'cancelled' || fresh.status === 'expired' ? 'payment-failed' : 'payment-success'
+    }));
   },
 
-  cancelActiveBooking: () => {
-    set((state) => {
-      const updatedActive = { ...state.activeBooking, status: 'cancelled' as const };
-      const updatedList = state.userBookings.map((b) => 
-        b.id === state.activeBooking.id ? { ...b, status: 'cancelled' as const } : b
-      );
-      return {
-        userBookings: updatedList,
-        activeBooking: updatedActive,
-        isCancelModalOpen: false
-      };
-    });
-  },
+  cancelActiveBooking: () => get().cancelBookingById(),
 
-  cancelBookingById: (bookingId) => {
-    set((state) => {
-      const updatedList = state.userBookings.map((b) => 
-        b.id === bookingId ? { ...b, status: 'cancelled' as const } : b
-      );
-      const updatedActive = state.activeBooking.id === bookingId
-        ? { ...state.activeBooking, status: 'cancelled' as const }
-        : state.activeBooking;
-      return {
-        userBookings: updatedList,
-        activeBooking: updatedActive,
-        isCancelModalOpen: false
-      };
-    });
+  cancelBookingById: async (bookingId) => {
+    const target = bookingId
+      ? get().userBookings.find((b) => b.id === bookingId)
+      : get().activeBooking;
+    if (!target?.dbId) { set({ isCancelModalOpen: false }); return; }
+    try {
+      await cancelBookingRpc(target.dbId);
+      const fresh = await fetchBookingByDbId(target.dbId);
+      if (fresh) {
+        set((state) => ({
+          userBookings: state.userBookings.map((b) => (b.dbId === fresh.dbId ? fresh : b)),
+          activeBooking: state.activeBooking.dbId === fresh.dbId ? fresh : state.activeBooking,
+          isCancelModalOpen: false
+        }));
+      }
+    } catch (err: any) {
+      set({ isCancelModalOpen: false });
+      window.alert(err.message ?? 'Booking tidak dapat dibatalkan');
+    }
   },
 
   updateUserProfile: (profile) => {
-    set((state) => ({
-      currentUser: state.currentUser ? { ...state.currentUser, ...profile } : null
-    }));
+    const user = get().currentUser;
+    set((state) => ({ currentUser: state.currentUser ? { ...state.currentUser, ...profile } : null }));
+    if (user) void updateProfileRow(user.id, profile).catch((e) => console.error('Gagal menyimpan profil:', e));
   },
 
   setSmartMatchCriteria: (criteria) => set((state) => ({
     smartMatchCriteria: { ...state.smartMatchCriteria, ...criteria }
   })),
 
-  executeSmartMatch: () => {
-    const guides = MOCK_GUIDES;
-    const results: SmartMatchResult[] = guides.map((guide, idx) => {
-      const ratingScore = Math.round((guide.rating / 5.0) * 25);
-      const interestScore = 24 - idx * 2;
-      const distanceScore = 14;
-      const budgetScore = 15;
-      const historyScore = Math.min(10, Math.round((guide.completedTours / 200) * 10));
-      const responseScore = Math.round((guide.responseRate / 100) * 10);
-      const totalScore = ratingScore + interestScore + distanceScore + budgetScore + historyScore + responseScore;
-      const recommendedUMKM = MOCK_UMKM[idx % MOCK_UMKM.length];
-
-      return {
-        guide,
-        matchScore: Math.min(99, totalScore),
-        scoringBreakdown: {
-          ratingScore,
-          interestScore,
-          distanceScore,
-          budgetScore,
-          historyScore,
-          responseScore
-        },
-        recommendedUMKM
-      };
-    });
-
-    results.sort((a, b) => b.matchScore - a.matchScore);
-    set({ smartMatchResults: results });
+  executeSmartMatch: async () => {
+    const { interest, budget } = get().smartMatchCriteria;
+    try {
+      const rows = await runSmartMatch(interest, budget);
+      const results: SmartMatchResult[] = rows
+        .map((r, idx) => {
+          const guide = MOCK_GUIDES.find((g) => g.id === r.guide_id);
+          if (!guide) return null;
+          return {
+            guide,
+            matchScore: r.match_score,
+            scoringBreakdown: {
+              ratingScore: r.rating_score, interestScore: r.interest_score, distanceScore: r.distance_score,
+              budgetScore: r.budget_score, historyScore: r.history_score, responseScore: r.response_score
+            },
+            recommendedUMKM: MOCK_UMKM[idx % Math.max(1, MOCK_UMKM.length)]
+          } as SmartMatchResult;
+        })
+        .filter(Boolean) as SmartMatchResult[];
+      set({ smartMatchResults: results });
+    } catch (err) {
+      console.error('Smart Match gagal:', err);
+      set({ smartMatchResults: [] });
+    }
   },
 
   startBooking: (guide, destination, bundledUMKM = MOCK_UMKM[0]) => {
@@ -930,7 +825,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       guide,
       coGuides: [],
       guidesCount: 1,
-      date: '1 April 2026',
+      date: defaultTourDate(),
       participants: 3,
       originalAmount: targetDest.unitPrice * 3,
       discountAmount: 0,
@@ -969,35 +864,41 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
   },
 
-  confirmPayment: (method) => {
-    set((state) => {
-      const draft = state.currentDraftBooking || state.activeBooking;
-
-      const finalizedBooking: BookingState = {
-        ...draft,
-        paymentMethod: method,
-        status: 'confirmed_by_guide'
-      };
-
-      return {
-        userBookings: [finalizedBooking, ...state.userBookings],
+  confirmPayment: async (method) => {
+    const draft = get().currentDraftBooking || get().activeBooking;
+    set({ bookingBusy: true, bookingError: null });
+    try {
+      const created = await createBooking({ ...draft, paymentMethod: method });   // harga dihitung ulang di server
+      const payment = await createPayment(created.dbId!, method);                 // tagihan ke payment gateway
+      const booking = { ...created, paymentMethod: method };
+      set((state) => ({
+        bookingBusy: false,
+        paymentInfo: payment,
         currentDraftBooking: null,
-        activeBooking: finalizedBooking,
-        activeScreen: 'payment-success'
-      };
-    });
+        activeBooking: booking,
+        userBookings: [booking, ...state.userBookings],
+        activeScreen: 'payment-qris'
+      }));
+      watchBookingPayment(created.dbId!, set);
+    } catch (err: any) {
+      set({ bookingBusy: false, bookingError: err.message });
+      window.alert(`Gagal membuat pesanan: ${err.message}`);
+    }
   },
 
-  guideConfirmBooking: () => {
-    set((state) => {
-      const updated = state.userBookings.map((b) => 
-        b.id === state.activeBooking.id ? { ...b, status: 'confirmed_by_guide' as const } : b
-      );
-      return { 
-        userBookings: updated,
-        activeBooking: { ...state.activeBooking, status: 'confirmed_by_guide' }
-      };
-    });
+  guideConfirmBooking: async () => {
+    const target = get().activeBooking;
+    if (!target.dbId) return;
+    try {
+      await guideConfirmRpc(target.dbId);
+      const fresh = await fetchBookingByDbId(target.dbId);
+      if (fresh) set((state) => ({
+        activeBooking: fresh,
+        userBookings: state.userBookings.map((b) => (b.dbId === fresh.dbId ? fresh : b))
+      }));
+    } catch (err: any) {
+      window.alert(err.message ?? 'Gagal mengonfirmasi booking');
+    }
   },
 
   setActiveBookingById: (bookingId) => {
@@ -1010,201 +911,110 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
   },
 
+  // Hanya navigasi/UI. Status "completed" & pencairan escrow terjadi di server lewat completeTourCheckOut.
   markTourCompleted: (bookingId) => {
     set((state) => {
       const targetId = bookingId || state.activeBooking.id;
-      const nowStr = new Date().toLocaleDateString('id-ID', {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric'
-      }) + ', ' + new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
-
-      const updated = state.userBookings.map((b) =>
-        b.id === targetId ? { ...b, status: 'completed' as const, completedAt: b.completedAt || nowStr } : b
-      );
-      const updatedActive = state.activeBooking.id === targetId || !bookingId
-        ? { ...state.activeBooking, status: 'completed' as const, completedAt: state.activeBooking.completedAt || nowStr }
-        : state.activeBooking;
-
+      const patch = { completedAt: new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) };
       return {
-        userBookings: updated,
-        activeBooking: updatedActive
+        activeBooking: state.activeBooking.id === targetId ? { ...state.activeBooking, ...patch } : state.activeBooking
       };
     });
   },
 
-  completeTourCheckOut: (rating, reviewText, bookingId) => {
-    set((state) => {
-      const targetId = bookingId || state.activeBooking.id;
-      const nowStr = new Date().toLocaleDateString('id-ID', {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric'
-      }) + ', ' + new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
-
-      const updated = state.userBookings.map((b) =>
-        b.id === targetId
-          ? {
-              ...b,
-              status: 'completed' as const,
-              completedAt: b.completedAt || nowStr,
-              reviewRating: rating,
-              reviewComment: reviewText
-            }
-          : b
-      );
-      const updatedActive = state.activeBooking.id === targetId || !bookingId
-        ? {
-            ...state.activeBooking,
-            status: 'completed' as const,
-            completedAt: state.activeBooking.completedAt || nowStr,
-            reviewRating: rating,
-            reviewComment: reviewText
-          }
-        : state.activeBooking;
-
-      return {
-        userBookings: updated,
-        activeBooking: updatedActive,
-        pointsBalance: state.pointsBalance + 100,
+  completeTourCheckOut: async (rating, reviewText, bookingId) => {
+    const target = bookingId ? get().userBookings.find((b) => b.id === bookingId) : get().activeBooking;
+    if (!target?.dbId) return;
+    try {
+      await completeTourRpc(target.dbId, rating, reviewText); // simpan ulasan, cairkan escrow, tambah poin
+      const [fresh, user] = [await fetchBookingByDbId(target.dbId), get().currentUser];
+      const points = user ? await fetchPoints(user.id) : get().pointsBalance;
+      set((state) => ({
+        activeBooking: fresh ?? state.activeBooking,
+        userBookings: state.userBookings.map((b) => (b.dbId === target.dbId && fresh ? fresh : b)),
+        pointsBalance: points,
         activeScreen: 'review'
-      };
-    });
+      }));
+    } catch (err: any) {
+      window.alert(err.message ?? 'Gagal menyelesaikan tur');
+    }
   },
 
-  openDirectChat: (bookingId) => {
-    const targetId = bookingId || get().activeBooking?.id || 'BK-99201';
-    set({
-      activeChatBookingId: targetId,
-      activeScreen: 'direct-chat'
-    });
+  openDirectChat: async (bookingId) => {
+    const state = get();
+    const targetId = bookingId || state.activeBooking?.id || '';
+    set({ activeChatBookingId: targetId, activeScreen: 'direct-chat' });
+    const booking = state.userBookings.find((b) => b.id === targetId) || state.activeBooking;
+    const me = state.currentUser;
+    if (!booking?.dbId || !me) return;
+    const ctx = chatContext(booking, me);
+    try {
+      const messages = await fetchChat(booking.dbId, booking.id, ctx);
+      set((st) => ({ directChatMessages: [...st.directChatMessages.filter((m) => m.bookingId !== booking.id), ...messages] }));
+      stopChatWatcher();
+      stopChat = subscribeChat(booking.dbId, booking.id, ctx, (m) =>
+        set((st) => (st.directChatMessages.some((x) => x.id === m.id) ? {} : { directChatMessages: [...st.directChatMessages, m] }))
+      );
+    } catch (err) {
+      console.error('Gagal memuat chat:', err);
+    }
   },
 
   setActiveChatBookingId: (bookingId) => set({ activeChatBookingId: bookingId }),
 
-  sendDirectChatMessage: (bookingId, text) => {
-    const { currentUser, directChatMessages } = get();
-    const role: 'wisatawan' | 'pemandu' = currentUser?.role === 'pemandu' ? 'pemandu' : 'wisatawan';
-    const senderName = currentUser?.name || (role === 'pemandu' ? 'Bambang Pamungkas' : 'Niceguymo');
-    const senderAvatar = currentUser?.avatar || (role === 'pemandu' 
-      ? 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80'
-      : 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=200&q=80');
-
-    const newMsg: DirectChatMessage = {
-      id: `dm-${Date.now()}`,
-      bookingId,
-      senderRole: role,
-      senderName,
-      senderAvatar,
-      text,
-      timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB'
-    };
-
-    set({ directChatMessages: [...directChatMessages, newMsg] });
-
-    // Simulate friendly auto-reply
-    setTimeout(() => {
-      const state = get();
-      if (role === 'wisatawan') {
-        const autoReplies = [
-          'Baik kak! Informasi diterima. Saya pastikan meeting point sudah siap dan kita bisa mulai tepat waktu.',
-          'Siap kak! Semua rincian tur dan tiket cagar budaya sudah saya amankan. Jika ada yang ingin ditanyakan lagi silakan ya!',
-          'Terima kasih infonya kak! Saya sudah standby di lokasi titik kumpul ZHS.'
-        ];
-        const randomReply = autoReplies[Math.floor(Math.random() * autoReplies.length)];
-        const replyMsg: DirectChatMessage = {
-          id: `dm-${Date.now() + 1}`,
-          bookingId,
-          senderRole: 'pemandu',
-          senderName: 'Bambang Pamungkas',
-          senderAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80',
-          text: randomReply,
-          timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB'
-        };
-        set({ directChatMessages: [...state.directChatMessages, replyMsg] });
-      } else {
-        const replyMsg: DirectChatMessage = {
-          id: `dm-${Date.now() + 1}`,
-          bookingId,
-          senderRole: 'wisatawan',
-          senderName: 'Niceguymo',
-          senderAvatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=200&q=80',
-          text: 'Terima kasih atas respons cepatnya Mas Bambang! Sampai ketemu di lokasi ya.',
-          timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB'
-        };
-        set({ directChatMessages: [...state.directChatMessages, replyMsg] });
-      }
-    }, 1200);
-  },
-
-  toggleGuideAvailability: () => set((state) => ({ guideAvailability: !state.guideAvailability })),
-
-  withdrawGuideBalance: () => {
-    set((state) => {
-      if (state.guideWithdrawableBalance <= 0) return {};
-      return { guideWithdrawableBalance: 0 };
-    });
-  },
-
-  guideValidateQr: (qrCode) => {
-    const state = get();
-    const cleanCode = qrCode.trim().toUpperCase();
-    const found = state.userBookings.find(b => b.checkInQrCode.toUpperCase() === cleanCode);
-    if (found) {
-      const updated = state.userBookings.map(b => b.id === found.id ? { ...b, status: 'in_tour' as const } : b);
-      set({ 
-        userBookings: updated, 
-        activeBooking: { ...found, status: 'in_tour' } 
-      });
-      return { success: true, message: `Berhasil! E-Tiket untuk ${found.title} valid. Status diubah menjadi 'Sedang Berlangsung (In Tour)'.` };
+  sendDirectChatMessage: async (bookingId, text) => {
+    const { currentUser, userBookings, activeBooking } = get();
+    const booking = userBookings.find((b) => b.id === bookingId) || activeBooking;
+    if (!currentUser || !booking?.dbId) return;
+    try {
+      await sendChat(booking.dbId, currentUser.id, text); // pesan muncul lewat subscription realtime
+    } catch (err: any) {
+      window.alert(err.message ?? 'Pesan gagal terkirim');
     }
-    return { success: false, message: 'Kode tiket QR tidak ditemukan atau tidak aktif di sistem ZHS.' };
   },
 
-  guideAcceptLeadBooking: () => {
-    const newBooking: BookingState = {
-      id: `BK-${Math.floor(10000 + Math.random() * 90000)}`,
-      title: 'Tur Lembah Hijau & Mata Air Asri',
-      destination: 'Desa Cihanjawar, Kec. Bojong, Purwakarta',
-      destinationId: 'pasir-langlang',
-      destinationImage: 'https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=800&q=80',
-      unitPrice: 40500,
-      guide: MOCK_GUIDES[3],
-      coGuides: [],
-      guidesCount: 1,
-      date: '25 Oktober 2026',
-      participants: 2,
-      originalAmount: 81000,
-      discountAmount: 0,
-      totalAmount: 81000,
-      paymentMethod: 'QRIS',
-      status: 'confirmed_by_guide',
-      checkInQrCode: `ZHS-QR-BK${Math.floor(1000 + Math.random() * 9000)}`,
-      meetingPoint: 'Pos Gerbang Wisata Alam',
-      bundledUMKM: MOCK_UMKM[1],
-      selectedTransport: TRANSPORT_OPTIONS[0],
-      foodAddOns: [],
-      includeTransport: false,
-      notes: 'Permintaan via Smart Match lead engine',
-      createdAt: 'Hari ini'
-    };
-    set((state) => ({
-      userBookings: [newBooking, ...state.userBookings]
-    }));
+  toggleGuideAvailability: async () => {
+    const next = !get().guideAvailability;
+    const user = get().currentUser;
+    set({ guideAvailability: next });
+    if (user) {
+      const { error } = await supabase.from('guides').update({ is_available: next }).eq('id', user.id);
+      if (error) set({ guideAvailability: !next });
+    }
   },
 
-  guideManagedDestinations: (() => {
+  withdrawGuideBalance: async () => {
+    const amount = get().guideWithdrawableBalance;
+    const user = get().currentUser;
+    if (amount <= 0 || !user) return;
     try {
-      const saved = localStorage.getItem('zhs_guide_destinations');
-      if (saved) return JSON.parse(saved);
-    } catch (e) {}
-    return ['situ-buleud', 'pasir-langlang', 'curug-tilu', 'gracia-spa'];
-  })(),
+      await requestWithdrawalRpc(amount);
+      set({ guideWithdrawableBalance: await fetchWalletBalance(user.id) });
+    } catch (err: any) {
+      window.alert(err.message ?? 'Penarikan gagal');
+    }
+  },
 
-  setGuideManagedDestinations: (destIds) => {
+  guideValidateQr: async (qrCode) => {
     try {
-      localStorage.setItem('zhs_guide_destinations', JSON.stringify(destIds));
-    } catch (e) {}
+      const bookingId = await guideStartTourRpc(qrCode.trim());
+      const fresh = await fetchBookingByDbId(bookingId);
+      if (fresh) set((state) => ({
+        activeBooking: fresh,
+        userBookings: state.userBookings.some((b) => b.dbId === fresh.dbId)
+          ? state.userBookings.map((b) => (b.dbId === fresh.dbId ? fresh : b))
+          : [fresh, ...state.userBookings]
+      }));
+      return { success: true, message: `Berhasil! E-Tiket valid. Status diubah menjadi 'Sedang Berlangsung (In Tour)'.` };
+    } catch {
+      return { success: false, message: 'Kode tiket QR tidak ditemukan atau tidak aktif di sistem ZHS.' };
+    }
+  },
+
+  guideManagedDestinations: [],
+
+  setGuideManagedDestinations: async (destIds) => {
     set({ guideManagedDestinations: destIds });
-  }
-}));
+    const user = get().currentUser;
+    if (user) await saveGuideDestinations(user.id, destIds).catch((e) => console.error('Gagal menyimpan destinasi:', e));
+  }}));

@@ -116,7 +116,7 @@ export const PaymentSuccessScreen: React.FC = () => {
                 Invoice Berhasil Diunduh
               </h3>
               <p className="text-xs text-slate-500 font-mono mt-1">
-                Invoice_BK-10245.pdf
+                Invoice_{activeBooking.id}.pdf
               </p>
             </div>
 

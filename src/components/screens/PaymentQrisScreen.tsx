@@ -6,8 +6,11 @@ import {
 } from 'lucide-react';
 
 export const PaymentQrisScreen: React.FC = () => {
-  const { activeBooking, processPaymentSuccess, setActiveScreen } = useAppStore();
-  const [seconds, setSeconds] = useState(900); // 15:00
+  const { activeBooking, paymentInfo, processPaymentSuccess, setActiveScreen } = useAppStore();
+  const [seconds, setSeconds] = useState(() => {
+    const exp = paymentInfo?.expiresAt ? Math.floor((new Date(paymentInfo.expiresAt).getTime() - Date.now()) / 1000) : 900;
+    return Math.max(0, Math.min(exp, 24 * 3600));
+  });
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -61,9 +64,18 @@ export const PaymentQrisScreen: React.FC = () => {
         {/* QR CODE BOX (exact as Figma Page 42 & 45) */}
         <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 text-center space-y-4 shadow-sm max-w-md mx-auto">
           <div className="relative p-6 bg-slate-50 border border-slate-200 rounded-3xl w-64 h-64 mx-auto flex flex-col items-center justify-center shadow-inner">
-            <QrCode className="w-48 h-48 text-[#19324d]" />
+            {paymentInfo?.qrUrl ? (
+              <img src={paymentInfo.qrUrl} alt="QRIS pembayaran" className="w-48 h-48 object-contain" />
+            ) : paymentInfo?.vaNumber ? (
+              <div className="text-center">
+                <span className="text-[10px] text-slate-400 uppercase tracking-widest">Virtual Account</span>
+                <div className="text-xl font-black text-[#19324d] tracking-wider mt-1">{paymentInfo.vaNumber}</div>
+              </div>
+            ) : (
+              <QrCode className="w-48 h-48 text-slate-300" />
+            )}
             <span className="text-[10px] font-mono text-slate-400 mt-1 uppercase tracking-widest">
-              QRIS NASIONAL ID
+              {paymentInfo?.vaNumber ? paymentInfo.method : 'QRIS NASIONAL ID'}
             </span>
           </div>
 
@@ -112,10 +124,10 @@ export const PaymentQrisScreen: React.FC = () => {
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-6 py-3.5 z-40 shadow-lg">
         <div className="max-w-2xl mx-auto">
           <button
-            onClick={processPaymentSuccess}
+            onClick={() => void processPaymentSuccess()}
             className="w-full py-3.5 bg-[#19324d] hover:bg-[#122438] text-white font-extrabold text-xs sm:text-sm uppercase tracking-wider rounded-full shadow-md active:scale-98 transition-all flex items-center justify-center gap-2"
           >
-            <span>BAYAR SEKARANG →</span>
+            <span>SAYA SUDAH BAYAR · CEK STATUS</span>
           </button>
         </div>
       </div>

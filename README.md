@@ -1,32 +1,47 @@
-# React + TypeScript + Vite
+# Zam Zam Hidden Spot (Next.js + Supabase + Vercel)
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+## 1. Siapkan Supabase
+1. Buat project di supabase.com.
+2. **SQL Editor**, jalankan berurutan: `supabase/migrations/0001_schema.sql`, `supabase/seed.sql`, lalu `0002_cron.sql`
+   (aktifkan extension `pg_cron` dulu). Untuk development saja: `supabase/seed_demo_guides.sql`.
+3. **Authentication > Providers**: aktifkan Email (nyalakan *Confirm email*), Google/Facebook bila perlu.
+   Ubah template email "Confirm signup" agar memakai kode: `{{ .Token }}`.
+4. **Authentication > URL Configuration**: isi Site URL dan Redirect URLs (`http://localhost:3000` dan alamat Vercel).
+5. **Storage**: bucket `avatars`, `destination-images` (publik), `guide-documents`, `dispute-evidence` (privat).
 
-Currently, two official plugins are available:
+## 2. Environment frontend
+Salin `.env.example` menjadi `.env.local`:
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://xxxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_xxxx
+```
+Hanya dua variabel itu. Jangan menaruh Secret key Supabase, kunci Gemini, atau kunci Midtrans di sini.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+## 3. Jalankan
+```bash
+npm install
+npm run dev      # http://localhost:3000
+npm run build && npm start
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+## 4. Edge Functions (backend)
+```bash
+npm i -g supabase
+supabase login && supabase link --project-ref <PROJECT_REF>
+supabase secrets set GEMINI_API_KEY=... MIDTRANS_SERVER_KEY=... MIDTRANS_IS_PRODUCTION=false
+supabase functions deploy ai-chat create-payment payment-webhook
+```
+Daftarkan URL `.../functions/v1/payment-webhook` di Midtrans > Settings > Payment > Notification URL.
+
+## 5. Deploy ke Vercel
+- Production Branch: `main`. Framework Preset: **Next.js**. Kosongkan semua Override (Build Command, Output Directory).
+- Environment Variables: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`. Setelah mengubahnya, wajib Redeploy.
+
+## Menjadikan akun admin / pemandu
+`update profiles set role = 'admin' where id = '<uuid>';`
+Pemandu: setelah verifikasi, `update profiles set role='pemandu' where id=...;` lalu isi baris di tabel `guides` (`verification = 'approved'`).
+
+## Belum tersambung ke database
+- Form registrasi pemandu (unggah dokumen, pembuatan baris `guides`).
+- Tab harga/area pemandu, notifikasi, tiket bantuan, dispute, panel admin.
+- Refund otomatis ke payment gateway setelah `cancel_booking` / booking kedaluwarsa.

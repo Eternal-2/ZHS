@@ -198,13 +198,13 @@ export const GuideVerificationStatusScreen: React.FC = () => {
 // VERIFICATION APPROVED SCREEN
 // ============================================================
 export const GuideVerificationApprovedScreen: React.FC = () => {
-  const { setActiveScreen, login } = useAppStore();
+  const { setActiveScreen, hydrateUser } = useAppStore();
   const [redirecting, setRedirecting] = useState(false);
 
   const handleGoToDashboard = () => {
     setRedirecting(true);
     setTimeout(() => {
-      login('pemandu');
+      void hydrateUser({ navigate: true }); // role 'pemandu' diberikan admin setelah verifikasi disetujui
     }, 1500);
   };
 

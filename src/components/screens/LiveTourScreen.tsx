@@ -172,7 +172,7 @@ export const LiveTourScreen: React.FC = () => {
                   />
                   <div>
                     <h4 className="font-bold text-xs text-[#19324d]">
-                      {activeBooking.guide?.name || 'Bambang Pamungkas'}
+                      {activeBooking.guide?.name || 'Pemandu ZHS'}
                     </h4>
                     <span className="text-[11px] text-slate-500">Pemandu BNSP • Terverifikasi Resmi</span>
                   </div>

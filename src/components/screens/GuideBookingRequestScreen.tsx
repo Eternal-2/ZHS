@@ -100,7 +100,7 @@ export const GuideBookingRequestScreen: React.FC = () => {
               className="w-14 h-14 rounded-full object-cover border-2 border-slate-200"
             />
             <div className="space-y-1">
-              <h4 className="font-extrabold text-[#19324d]">Niceguymo</h4>
+              <h4 className="font-extrabold text-[#19324d]">{activeBooking.touristName || 'Wisatawan'}</h4>
               <div className="flex items-center gap-1 text-amber-500 text-xs font-bold">
                 <Star className="w-3.5 h-3.5 fill-amber-400" />
                 <span>4.8 (12 tur)</span>

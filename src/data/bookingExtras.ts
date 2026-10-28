@@ -1,5 +1,6 @@
 export interface DestinationItem {
-  id: string;
+  id: string;          // slug (dipakai UI)
+  dbId?: string;       // uuid di database
   title: string;
   location: string;
   unitPrice: number;
@@ -8,6 +9,8 @@ export interface DestinationItem {
   image: string;
   description: string;
   meetingPoints: { id: string; name: string; desc: string }[];
+  highlights?: string[];
+  reviewsCount?: number;
 }
 
 export function calculatePerPaxPrice(basePrice: number, participants: number): {
@@ -41,7 +44,8 @@ export function calculatePerPaxPrice(basePrice: number, participants: number): {
 }
 
 export interface TransportOption {
-  id: string;
+  id: string;          // slug (dipakai UI)
+  dbId?: string;       // uuid di database
   name: string;
   capacityText: string;
   minCapacity: number;

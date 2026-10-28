@@ -47,6 +47,14 @@ const POINT_CATALOG = [
   }
 ];
 
+// Kode voucher di tabel `vouchers` untuk tiap hadiah poin
+const POINT_VOUCHER_CODES: Record<string, string> = {
+  'Diskon Rp 25.000': 'POIN25K',
+  'Diskon Rp 50.000': 'POIN50K',
+  'Gratis Kuliner Lokal': 'POINKULINER',
+  'Upgrade Layanan Pemandu': 'POINUPGRADE'
+};
+
 const LEVEL_TIERS = [
   { name: 'Explorer', minPoints: 0, maxPoints: 999, color: 'sky', icon: '🧭' },
   { name: 'Adventurer', minPoints: 1000, maxPoints: 2999, color: 'violet', icon: '⛰️' },
@@ -113,7 +121,7 @@ export const VoucherScreen: React.FC = () => {
 
   const confirmPointsRedeem = () => {
     if (!pointsConfirm) return;
-    redeemVoucher(pointsConfirm.points, `ZHS-POIN-${Date.now()}`);
+    redeemVoucher(pointsConfirm.points, POINT_VOUCHER_CODES[pointsConfirm.title] ?? pointsConfirm.title);
     setPointsRedeemed(pointsConfirm.title);
     setPointsConfirm(null);
   };
