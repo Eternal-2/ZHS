@@ -34,6 +34,15 @@ export const LoginScreen: React.FC = () => {
     }
   };
 
+  const handleOAuth = async (provider: 'google' | 'facebook') => {
+  try {
+    await signInWithProvider(provider);
+  } catch (err: any) {
+    setErrorMsg(err?.message ?? 'Login dengan akun sosial gagal.');
+    setHasError(true);
+  }
+};
+
   const handleResetSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -241,7 +250,7 @@ export const LoginScreen: React.FC = () => {
             <div className="grid grid-cols-2 gap-3">
               <button
                 type="button"
-                onClick={() => void signInWithProvider('google')}
+                onClick={() => void handleOAuth('google')}
                 className="py-2.5 px-3 bg-white border border-slate-300 hover:bg-slate-50 rounded-xl flex items-center justify-center gap-2 text-xs font-semibold text-slate-700 shadow-sm transition-all"
               >
                 <span className="font-bold text-red-500 text-sm">G</span>
@@ -250,7 +259,7 @@ export const LoginScreen: React.FC = () => {
 
               <button
                 type="button"
-                onClick={() => void signInWithProvider('facebook')}
+                onClick={() => void handleOAuth('facebook')}
                 className="py-2.5 px-3 bg-white border border-slate-300 hover:bg-slate-50 rounded-xl flex items-center justify-center gap-2 text-xs font-semibold text-slate-700 shadow-sm transition-all"
               >
                 <span className="font-bold text-blue-600 text-sm">f</span>
