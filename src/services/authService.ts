@@ -67,7 +67,7 @@ export async function signInWithPassword(email: string, password: string) {
   return fetchCurrentUser();
 }
 
-export async function signInWithProvider(provider: 'google' | 'facebook') {
+export async function signInWithProvider(provider: 'google') {
   const { error } = await supabase.auth.signInWithOAuth({
     provider,
     options: { redirectTo: window.location.origin }

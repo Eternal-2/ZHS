@@ -34,6 +34,15 @@ export const LoginScreen: React.FC = () => {
     }
   };
 
+  const handleOAuth = async () => {
+    try {
+      await signInWithProvider('google');
+    } catch (err: any) {
+      setErrorMsg(err?.message ?? 'Login dengan Google gagal.');
+      setHasError(true);
+    }
+  };
+
   const handleResetSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -238,25 +247,14 @@ export const LoginScreen: React.FC = () => {
               </span>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => void signInWithProvider('google')}
-                className="py-2.5 px-3 bg-white border border-slate-300 hover:bg-slate-50 rounded-xl flex items-center justify-center gap-2 text-xs font-semibold text-slate-700 shadow-sm transition-all"
-              >
-                <span className="font-bold text-red-500 text-sm">G</span>
-                <span>Google</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => void signInWithProvider('facebook')}
-                className="py-2.5 px-3 bg-white border border-slate-300 hover:bg-slate-50 rounded-xl flex items-center justify-center gap-2 text-xs font-semibold text-slate-700 shadow-sm transition-all"
-              >
-                <span className="font-bold text-blue-600 text-sm">f</span>
-                <span>Facebook</span>
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => void handleOAuth()}
+              className="w-full py-2.5 px-3 bg-white border border-slate-300 hover:bg-slate-50 rounded-xl flex items-center justify-center gap-2 text-xs font-semibold text-slate-700 shadow-sm transition-all"
+            >
+              <span className="font-bold text-red-500 text-sm">G</span>
+              <span>Google</span>
+            </button>
           </div>
         )}
       </div>

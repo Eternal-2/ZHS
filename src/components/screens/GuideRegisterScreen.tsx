@@ -1,4 +1,5 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import { useCamera } from '../../lib/useCamera';
 import { useAppStore } from '../../store/useAppStore';
 import {
   ArrowLeft, ArrowRight, User, Mail, Phone, MapPin,
@@ -52,9 +53,26 @@ export const GuideRegisterScreen: React.FC = () => {
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [faceVerified, setFaceVerified] = useState(false);
-  const [isVerifying, setIsVerifying] = useState(false);
+  const [faceImage, setFaceImage] = useState<string | null>(null);
   const [showKtpCamera, setShowKtpCamera] = useState(false);
+  const [ktpImage, setKtpImage] = useState<string | null>(null);
+  const [ktpDraft, setKtpDraft] = useState<string | null>(null);
+  const ktpCam = useCamera('environment'); // kamera belakang untuk dokumen
+  const faceCam = useCamera('user');       // kamera depan untuk selfie
   const [ktpEncrypted, setKtpEncrypted] = useState(false);
+
+  // Kamera KTP menyala saat modal dibuka, mati saat ditutup
+  useEffect(() => {
+    if (showKtpCamera) void ktpCam.start();
+    else ktpCam.stop();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showKtpCamera]);
+
+  // Kamera wajah mati otomatis saat meninggalkan langkah 4
+  useEffect(() => {
+    if (step !== 4) faceCam.stop();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
 
   const cvRef = useRef<HTMLInputElement>(null);
   const certRef = useRef<HTMLInputElement>(null);
@@ -142,10 +160,18 @@ export const GuideRegisterScreen: React.FC = () => {
   };
 
   const handleCaptureKtp = () => {
+    setKtpDraft(null);
     setShowKtpCamera(true);
   };
 
+  const handleKtpShoot = () => {
+    const img = ktpCam.capture();
+    if (img) setKtpDraft(img);
+  };
+
   const handleKtpConfirm = () => {
+    if (!ktpDraft) return;
+    setKtpImage(ktpDraft);
     setDocs(prev => ({ ...prev, ktpCaptured: true }));
     setKtpEncrypted(false);
     setShowKtpCamera(false);
@@ -153,12 +179,18 @@ export const GuideRegisterScreen: React.FC = () => {
     setErrors(prev => ({ ...prev, ktp: '' }));
   };
 
-  const handleFaceVerify = () => {
-    setIsVerifying(true);
-    setTimeout(() => {
-      setIsVerifying(false);
-      setFaceVerified(true);
-    }, 2500);
+  const handleFaceCapture = () => {
+    const img = faceCam.capture();
+    if (!img) return;
+    setFaceImage(img);
+    faceCam.stop();
+    setFaceVerified(true);
+  };
+
+  const handleFaceRetake = () => {
+    setFaceImage(null);
+    setFaceVerified(false);
+    void faceCam.start();
   };
 
   const handleSubmitRegistration = () => {
@@ -523,6 +555,9 @@ export const GuideRegisterScreen: React.FC = () => {
                         <span className="font-bold">DATA DIENKRIPSI & AMAN — Disimpan dengan enkripsi AES-256</span>
                       </div>
                     )}
+                    {ktpImage && (
+                      <img src={ktpImage} alt="Foto KTP" className="w-full rounded-xl border border-emerald-200" />
+                    )}
                     <button
                       onClick={() => setDocs(prev => ({ ...prev, ktpCaptured: false }))}
                       className="text-xs text-emerald-700 underline"
@@ -589,26 +624,41 @@ export const GuideRegisterScreen: React.FC = () => {
 
               {/* Face scan area */}
               <div className="relative w-52 h-52 mx-auto">
-                <div className={`w-52 h-52 rounded-full border-4 flex items-center justify-center transition-all ${
-                  faceVerified ? 'border-emerald-500 bg-emerald-50' : isVerifying ? 'border-[#19324d] bg-slate-100 animate-pulse' : 'border-slate-300 bg-slate-100'
+                <div className={`relative w-52 h-52 rounded-full border-4 overflow-hidden bg-slate-100 transition-all ${
+                  faceVerified ? 'border-emerald-500' : faceCam.status === 'ready' ? 'border-[#19324d]' : 'border-slate-300'
                 }`}>
-                  {faceVerified ? (
-                    <div className="text-center space-y-2">
-                      <CheckCircle2 className="w-16 h-16 text-emerald-500 mx-auto" />
-                      <p className="text-xs font-bold text-emerald-700">Wajah Terverifikasi!</p>
-                    </div>
-                  ) : isVerifying ? (
-                    <div className="text-center space-y-2">
-                      <Scan className="w-16 h-16 text-[#19324d] mx-auto animate-pulse" />
-                      <p className="text-xs font-bold text-[#19324d]">Memindai...</p>
-                    </div>
-                  ) : (
-                    <div className="text-center space-y-2">
-                      <User className="w-16 h-16 text-slate-400 mx-auto" />
-                      <p className="text-xs text-slate-500">Posisikan wajah Anda di sini</p>
+                  {/* video selalu ada di DOM supaya siap saat kamera dinyalakan */}
+                  <video
+                    ref={faceCam.videoRef}
+                    playsInline
+                    muted
+                    autoPlay
+                    className={`absolute inset-0 w-full h-full object-cover scale-x-[-1] ${faceCam.status === 'ready' ? '' : 'hidden'}`}
+                  />
+                  {faceVerified && faceImage && (
+                    <img src={faceImage} alt="Foto wajah" className="absolute inset-0 w-full h-full object-cover scale-x-[-1]" />
+                  )}
+                  {!faceVerified && faceCam.status !== 'ready' && (
+                    <div className="absolute inset-0 flex items-center justify-center text-center">
+                      {faceCam.status === 'starting' ? (
+                        <div className="space-y-2">
+                          <Scan className="w-14 h-14 text-[#19324d] mx-auto animate-pulse" />
+                          <p className="text-xs font-bold text-[#19324d]">Menyalakan kamera...</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <User className="w-14 h-14 text-slate-400 mx-auto" />
+                          <p className="text-xs text-slate-500">Kamera belum aktif</p>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
+                {faceVerified && (
+                  <div className="absolute -bottom-1 -right-1 bg-emerald-500 rounded-full p-1">
+                    <CheckCircle2 className="w-7 h-7 text-white" />
+                  </div>
+                )}
                 {/* Corner guides */}
                 {!faceVerified && (
                   <>
@@ -619,6 +669,13 @@ export const GuideRegisterScreen: React.FC = () => {
                   </>
                 )}
               </div>
+
+              {faceCam.error && (
+                <p className="text-xs text-red-500 flex items-start gap-1 text-left max-w-xs mx-auto">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                  {faceCam.error}
+                </p>
+              )}
 
               {!faceVerified && (
                 <div className="space-y-2 text-xs text-slate-500 max-w-xs mx-auto">
@@ -632,14 +689,28 @@ export const GuideRegisterScreen: React.FC = () => {
                 </div>
               )}
 
-              {!faceVerified && (
-                <button
-                  onClick={handleFaceVerify}
-                  disabled={isVerifying}
-                  className="w-full py-4 bg-[#19324d] hover:bg-[#122438] disabled:bg-slate-300 text-white font-extrabold text-sm uppercase tracking-wider rounded-2xl shadow-md transition-all flex items-center justify-center gap-2"
-                >
-                  <Scan className="w-4 h-4" />
-                  {isVerifying ? 'Memverifikasi Wajah...' : 'Mulai Verifikasi Wajah'}
+              {!faceVerified ? (
+                faceCam.status === 'ready' ? (
+                  <button
+                    onClick={handleFaceCapture}
+                    className="w-full py-4 bg-[#19324d] hover:bg-[#122438] text-white font-extrabold text-sm uppercase tracking-wider rounded-2xl shadow-md transition-all flex items-center justify-center gap-2"
+                  >
+                    <Camera className="w-4 h-4" />
+                    Ambil Foto Wajah
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => void faceCam.start()}
+                    disabled={faceCam.status === 'starting'}
+                    className="w-full py-4 bg-[#19324d] hover:bg-[#122438] disabled:bg-slate-300 text-white font-extrabold text-sm uppercase tracking-wider rounded-2xl shadow-md transition-all flex items-center justify-center gap-2"
+                  >
+                    <Scan className="w-4 h-4" />
+                    {faceCam.status === 'starting' ? 'Menyalakan Kamera...' : 'Aktifkan Kamera'}
+                  </button>
+                )
+              ) : (
+                <button onClick={handleFaceRetake} className="text-xs text-slate-500 underline">
+                  Ambil ulang foto
                 </button>
               )}
             </div>
@@ -647,8 +718,8 @@ export const GuideRegisterScreen: React.FC = () => {
             {faceVerified && (
               <div className="space-y-4">
                 <div className="bg-emerald-50 border border-emerald-300 rounded-2xl p-4 text-xs text-emerald-800 space-y-1">
-                  <p className="font-bold flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4" /> Verifikasi wajah berhasil!</p>
-                  <p>Seluruh dokumen akan dikirim ke tim admin ZHS untuk ditinjau.</p>
+                  <p className="font-bold flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4" /> Foto wajah berhasil direkam!</p>
+                  <p>Wajah akan dicocokkan dengan foto KTP oleh tim admin ZHS. Seluruh dokumen akan ditinjau di sana.</p>
                   <p>Estimasi waktu peninjauan: <strong>1-2 hari kerja</strong></p>
                 </div>
 
@@ -672,23 +743,38 @@ export const GuideRegisterScreen: React.FC = () => {
           <div className="w-full max-w-sm px-4 space-y-4">
             {/* Camera viewfinder */}
             <div className="relative w-full aspect-[4/3] bg-slate-900 rounded-3xl overflow-hidden border-2 border-white/20">
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-4/5 h-3/5 border-2 border-white/80 rounded-xl relative">
-                  {/* Corner marks */}
-                  <div className="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-amber-400 rounded-tl" />
-                  <div className="absolute top-0 right-0 w-6 h-6 border-t-4 border-r-4 border-amber-400 rounded-tr" />
-                  <div className="absolute bottom-0 left-0 w-6 h-6 border-b-4 border-l-4 border-amber-400 rounded-bl" />
-                  <div className="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 border-amber-400 rounded-br" />
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <p className="text-white/70 text-xs text-center px-4">Posisikan KTP dalam bingkai ini</p>
+              <video
+                ref={ktpCam.videoRef}
+                playsInline
+                muted
+                autoPlay
+                className={`absolute inset-0 w-full h-full object-cover ${ktpDraft ? 'hidden' : ''}`}
+              />
+              {ktpDraft && (
+                <img src={ktpDraft} alt="Pratinjau KTP" className="absolute inset-0 w-full h-full object-contain bg-black" />
+              )}
+              {!ktpDraft && ktpCam.status === 'ready' && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div className="w-4/5 h-3/5 border-2 border-white/80 rounded-xl relative">
+                    <div className="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-amber-400 rounded-tl" />
+                    <div className="absolute top-0 right-0 w-6 h-6 border-t-4 border-r-4 border-amber-400 rounded-tr" />
+                    <div className="absolute bottom-0 left-0 w-6 h-6 border-b-4 border-l-4 border-amber-400 rounded-bl" />
+                    <div className="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 border-amber-400 rounded-br" />
                   </div>
                 </div>
-              </div>
-              {/* Scan line animation */}
-              <div className="absolute inset-x-0 top-1/3 h-0.5 bg-amber-400/60 animate-bounce" />
+              )}
+              {!ktpDraft && ktpCam.status !== 'ready' && (
+                <div className="absolute inset-0 flex items-center justify-center p-5 text-center text-white/80 text-xs">
+                  {ktpCam.status === 'error' ? ktpCam.error : 'Menyalakan kamera…'}
+                </div>
+              )}
             </div>
 
-            <p className="text-white/80 text-xs text-center">Pastikan seluruh bagian KTP terlihat jelas dan tidak buram</p>
+            <p className="text-white/80 text-xs text-center">
+              {ktpDraft
+                ? 'Periksa hasil foto. Pastikan seluruh KTP terbaca jelas.'
+                : 'Posisikan KTP dalam bingkai. Pastikan tidak buram dan tidak silau.'}
+            </p>
 
             <div className="flex gap-3">
               <button
@@ -697,12 +783,30 @@ export const GuideRegisterScreen: React.FC = () => {
               >
                 <X className="w-4 h-4" /> Batal
               </button>
-              <button
-                onClick={handleKtpConfirm}
-                className="flex-1 py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold text-sm rounded-2xl transition-all flex items-center justify-center gap-2"
-              >
-                <Camera className="w-4 h-4" /> Ambil Foto
-              </button>
+              {ktpDraft ? (
+                <>
+                  <button
+                    onClick={() => setKtpDraft(null)}
+                    className="flex-1 py-3 bg-white/20 hover:bg-white/30 text-white font-bold text-sm rounded-2xl transition-all"
+                  >
+                    Ulangi
+                  </button>
+                  <button
+                    onClick={handleKtpConfirm}
+                    className="flex-1 py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-sm rounded-2xl transition-all flex items-center justify-center gap-2"
+                  >
+                    <CheckCircle2 className="w-4 h-4" /> Gunakan
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={handleKtpShoot}
+                  disabled={ktpCam.status !== 'ready'}
+                  className="flex-1 py-3 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-600 text-white font-bold text-sm rounded-2xl transition-all flex items-center justify-center gap-2"
+                >
+                  <Camera className="w-4 h-4" /> Ambil Foto
+                </button>
+              )}
             </div>
           </div>
         </div>
