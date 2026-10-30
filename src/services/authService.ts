@@ -64,7 +64,13 @@ export async function fetchCurrentUser(): Promise<User | null> {
 export async function signInWithPassword(email: string, password: string) {
   const { error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) throw error;
-  return fetchCurrentUser();
+  const user = await fetchCurrentUser();
+  if (user?.role === 'admin') {
+    // Akun admin tidak boleh masuk lewat halaman publik; pesannya sengaja sama dengan password salah.
+    await supabase.auth.signOut();
+    throw new Error('Invalid login credentials');
+  }
+  return user;
 }
 
 export async function signInWithProvider(provider: 'google') {

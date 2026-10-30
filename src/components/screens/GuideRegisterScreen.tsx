@@ -1,5 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useCamera } from '../../lib/useCamera';
+import {
+  dataUrlToBlob, fetchMyApplication, submitApplication, uploadDocuments
+} from '../../services/guideApplicationService';
+import type { UploadItem } from '../../services/guideApplicationService';
 import { useAppStore } from '../../store/useAppStore';
 import {
   ArrowLeft, ArrowRight, User, Mail, Phone, MapPin,
@@ -36,7 +40,7 @@ interface DocState {
 }
 
 export const GuideRegisterScreen: React.FC = () => {
-  const { setActiveScreen } = useAppStore();
+  const { setActiveScreen, currentUser, setRedirectAfterLogin } = useAppStore();
 
   const [step, setStep] = useState<Step>(1);
   const [personal, setPersonal] = useState<PersonalData>({
@@ -57,9 +61,39 @@ export const GuideRegisterScreen: React.FC = () => {
   const [showKtpCamera, setShowKtpCamera] = useState(false);
   const [ktpImage, setKtpImage] = useState<string | null>(null);
   const [ktpDraft, setKtpDraft] = useState<string | null>(null);
+  const [checkingExisting, setCheckingExisting] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
   const ktpCam = useCamera('environment'); // kamera belakang untuk dokumen
   const faceCam = useCamera('user');       // kamera depan untuk selfie
   const [ktpEncrypted, setKtpEncrypted] = useState(false);
+
+  // Isi data diri dari akun yang sedang login
+  useEffect(() => {
+    if (!currentUser) return;
+    setPersonal(prev => ({
+      name: prev.name || currentUser.name || '',
+      email: prev.email || currentUser.email || '',
+      phone: prev.phone || currentUser.phone || '',
+      address: prev.address || currentUser.address || ''
+    }));
+  }, [currentUser]);
+
+  // Jika sudah pernah mengajukan, langsung ke layar status (bukan mengisi formulir lagi)
+  useEffect(() => {
+    if (!currentUser) { setCheckingExisting(false); return; }
+    let cancelled = false;
+    fetchMyApplication()
+      .then((a) => {
+        if (cancelled) return;
+        if (a?.verification === 'approved') setActiveScreen('guide-verification-approved');
+        else if (a?.verification === 'rejected') setActiveScreen('guide-verification-status');
+        else if (a?.verification === 'pending') setActiveScreen('guide-pending-review');
+        else setCheckingExisting(false);
+      })
+      .catch(() => { if (!cancelled) setCheckingExisting(false); });
+    return () => { cancelled = true; };
+  }, [currentUser, setActiveScreen]);
 
   // Kamera KTP menyala saat modal dibuka, mati saat ditutup
   useEffect(() => {
@@ -193,8 +227,41 @@ export const GuideRegisterScreen: React.FC = () => {
     void faceCam.start();
   };
 
-  const handleSubmitRegistration = () => {
-    setActiveScreen('guide-pending-review');
+  const splitList = (value: string) => value.split(/[,;\n]/).map(v => v.trim()).filter(Boolean);
+
+  const handleSubmitRegistration = async () => {
+    if (!currentUser || submitting) return;
+    if (!docs.cv || !docs.cert || !ktpImage || !faceImage || docs.portfolioFiles.length === 0) {
+      setSubmitError('Dokumen belum lengkap. Kembali ke langkah sebelumnya dan lengkapi semuanya.');
+      return;
+    }
+    setSubmitting(true);
+    setSubmitError('');
+    try {
+      const items: UploadItem[] = [
+        { type: 'cv', file: docs.cv },
+        { type: 'certificate', file: docs.cert },
+        { type: 'ktp', file: dataUrlToBlob(ktpImage) },
+        { type: 'selfie', file: dataUrlToBlob(faceImage) },
+        ...docs.portfolioFiles.map((file): UploadItem => ({ type: 'portfolio', file }))
+      ];
+      const uploaded = await uploadDocuments(currentUser.id, items);   // ke bucket privat
+      await submitApplication({
+        docs: uploaded,
+        phone: personal.phone.trim() || undefined,
+        address: personal.address.trim() || undefined,
+        specialties: splitList(professional.specialization),
+        languages: splitList(professional.languages),
+        pricePerDay: parseInt(professional.pricePerDay.replace(/\D/g, ''), 10) || 0,
+        workHours: professional.operationalHours.trim() || undefined,
+        baseLocation: (currentUser.city || personal.address).trim().slice(0, 80) || undefined
+      });
+      setActiveScreen('guide-pending-review');
+    } catch (err: any) {
+      setSubmitError(err?.message ?? 'Pengiriman gagal. Periksa koneksi lalu coba lagi.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const nextStep = () => {
@@ -210,6 +277,49 @@ export const GuideRegisterScreen: React.FC = () => {
     `w-full px-4 py-3 bg-slate-50 border rounded-xl text-sm text-slate-800 focus:outline-none transition-colors ${
       errors[field] ? 'border-red-400 focus:border-red-500' : 'border-slate-300 focus:border-[#19324d]'
     }`;
+
+  if (checkingExisting && currentUser) {
+    return (
+      <div className="min-h-screen bg-[#f8fafc] flex items-center justify-center">
+        <div className="w-10 h-10 border-4 border-[#19324d] border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!currentUser) {
+    return (
+      <div className="min-h-screen bg-[#f8fafc] flex items-center justify-center px-4">
+        <div className="max-w-md w-full bg-white border border-slate-200 rounded-3xl p-8 shadow-sm text-center space-y-5">
+          <div className="w-16 h-16 mx-auto rounded-full bg-amber-50 border-2 border-amber-300 flex items-center justify-center">
+            <Lock className="w-8 h-8 text-amber-600" />
+          </div>
+          <div className="space-y-1.5">
+            <h2 className="text-xl font-black text-[#19324d]">Masuk Dulu untuk Menjadi Pemandu</h2>
+            <p className="text-sm text-slate-500">
+              Pendaftaran pemandu memakai akun ZHS Anda. Buat akun atau masuk, lalu Anda akan kembali ke formulir ini.
+            </p>
+          </div>
+          <div className="space-y-2.5">
+            <button
+              onClick={() => { setRedirectAfterLogin('guide-register'); setActiveScreen('register'); }}
+              className="w-full py-3.5 bg-[#19324d] hover:bg-[#122438] text-white font-extrabold text-sm uppercase tracking-wider rounded-2xl"
+            >
+              Buat Akun
+            </button>
+            <button
+              onClick={() => { setRedirectAfterLogin('guide-register'); setActiveScreen('login'); }}
+              className="w-full py-3.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-sm rounded-2xl"
+            >
+              Saya Sudah Punya Akun
+            </button>
+            <button onClick={() => setActiveScreen('welcome')} className="text-xs text-slate-500 underline">
+              Kembali
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#f8fafc] text-slate-800 pb-24">
@@ -723,12 +833,18 @@ export const GuideRegisterScreen: React.FC = () => {
                   <p>Estimasi waktu peninjauan: <strong>1-2 hari kerja</strong></p>
                 </div>
 
+                {submitError && (
+                  <p className="text-xs text-red-600 flex items-start gap-1.5 text-left">
+                    <AlertCircle className="w-4 h-4 shrink-0" /> {submitError}
+                  </p>
+                )}
                 <button
-                  onClick={handleSubmitRegistration}
-                  className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-sm uppercase tracking-wider rounded-2xl shadow-md transition-all flex items-center justify-center gap-2"
+                  onClick={() => void handleSubmitRegistration()}
+                  disabled={submitting}
+                  className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white font-extrabold text-sm uppercase tracking-wider rounded-2xl shadow-md transition-all flex items-center justify-center gap-2"
                 >
-                  <span>Kirim ke Admin & Selesai</span>
-                  <ArrowRight className="w-4 h-4" />
+                  <span>{submitting ? 'Mengunggah dokumen…' : 'Kirim ke Admin & Selesai'}</span>
+                  {!submitting && <ArrowRight className="w-4 h-4" />}
                 </button>
               </div>
             )}

@@ -436,6 +436,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   hydrateUser: async (opts) => {
     const user = await fetchCurrentUser();
     if (!user) return;
+    if (user.role === 'admin') return; // admin hanya masuk lewat halaman admin yang terpisah
     const isGuide = user.role === 'pemandu';
     const [bookings, balance, managed] = await Promise.all([
       fetchMyBookings(user.id, user.role).catch(() => [] as BookingState[]),
