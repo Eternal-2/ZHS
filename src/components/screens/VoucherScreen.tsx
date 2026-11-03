@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../../store/useAppStore';
+import { timeAgo } from '../../services/tourismService';
 import {
   ArrowLeft, CheckCircle2, Copy, Check,
   Gift, Tag, Zap, Trophy, Star, ChevronRight, X
@@ -62,7 +63,12 @@ const LEVEL_TIERS = [
 ];
 
 export const VoucherScreen: React.FC = () => {
-  const { pointsBalance, redeemVoucher, activeScreen, setActiveScreen, appliedVoucherCode } = useAppStore();
+  const { pointsBalance, redeemVoucher, activeScreen, setActiveScreen, appliedVoucherCode, pointsHistory, loadPointsHistory } = useAppStore();
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const openHistory = () => {
+    setHistoryOpen(true);
+    void loadPointsHistory();
+  };
   const [activeTab, setActiveTab] = useState<ActiveTab>('voucher');
   const [confirmModal, setConfirmModal] = useState<{ open: boolean; title: string; cost: number; code: string } | null>(null);
   const [pointsConfirm, setPointsConfirm] = useState<PointsConfirmItem>(null);
@@ -247,7 +253,7 @@ export const VoucherScreen: React.FC = () => {
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-base font-bold text-[#19324d]">Voucher Tersedia</h3>
-                  <button className="text-xs text-slate-500 hover:underline flex items-center gap-1">
+                  <button onClick={openHistory} className="text-xs text-slate-500 hover:underline flex items-center gap-1">
                     <span>Riwayat</span>
                     <ChevronRight className="w-3.5 h-3.5" />
                   </button>
@@ -341,7 +347,7 @@ export const VoucherScreen: React.FC = () => {
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="text-base font-bold text-[#19324d]">Katalog Penukaran</h3>
-                    <button className="text-xs text-slate-500 hover:underline flex items-center gap-1">
+                    <button onClick={openHistory} className="text-xs text-slate-500 hover:underline flex items-center gap-1">
                       <span>Riwayat</span>
                       <ChevronRight className="w-3.5 h-3.5" />
                     </button>
@@ -481,6 +487,37 @@ export const VoucherScreen: React.FC = () => {
               >
                 Batal
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Riwayat poin (dari database) */}
+      {historyOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-4" onClick={() => setHistoryOpen(false)}>
+          <div className="bg-white rounded-3xl w-full max-w-md max-h-[75vh] flex flex-col shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="p-5 border-b border-slate-200 flex items-center justify-between">
+              <h3 className="font-black text-[#19324d]">Riwayat Poin</h3>
+              <button onClick={() => setHistoryOpen(false)} className="p-1 rounded-lg hover:bg-slate-100">
+                <X className="w-5 h-5 text-slate-500" />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto space-y-2">
+              {pointsHistory.length === 0 ? (
+                <p className="text-xs text-slate-500 text-center py-8">Belum ada riwayat poin. Selesaikan tur untuk mendapatkan poin.</p>
+              ) : (
+                pointsHistory.map((tx) => (
+                  <div key={tx.id} className="flex items-center justify-between gap-3 p-3 border border-slate-200 rounded-2xl">
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-slate-800 truncate">{tx.reason}</p>
+                      <p className="text-[10px] text-slate-400">{timeAgo(tx.createdAt)}</p>
+                    </div>
+                    <span className={`text-sm font-extrabold shrink-0 ${tx.amount >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                      {tx.amount >= 0 ? '+' : ''}{tx.amount.toLocaleString('id-ID')}
+                    </span>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>

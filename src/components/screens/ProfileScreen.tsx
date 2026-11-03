@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
+import { uploadAvatar } from '../../services/tourismService';
 import { useAppStore } from '../../store/useAppStore';
 import { 
   ArrowLeft, Star, Clock, Ticket, Gift, Moon, 
@@ -23,15 +24,40 @@ export const ProfileScreen: React.FC = () => {
 
   // Edit profile form state (exact as Figma Page 18)
   const [name, setName] = useState(currentUser?.name || '');
-  const [gender, setGender] = useState('Laki-laki');
-  const [birthDate, setBirthDate] = useState('08/12/1995');
-  const [phone, setPhone] = useState(currentUser?.phone || '+62 812 3456 7890');
-  const [email, setEmail] = useState(currentUser?.email || 'bigmompruy@gmail.com');
-  const [address, setAddress] = useState(currentUser?.address || 'Jl. Melati No. 45');
-  const [city, setCity] = useState(currentUser?.city || 'Jakarta');
+  const isoToDisplay = (iso?: string) => (iso && /^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso.split('-').reverse().join('/') : '');
+  const displayToIso = (v: string) => {
+    const m = v.trim().match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
+    return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : '';
+  };
+
+  const [gender, setGender] = useState(currentUser?.gender || '');
+  const [birthDate, setBirthDate] = useState(isoToDisplay(currentUser?.birthDate));
+  const [phone, setPhone] = useState(currentUser?.phone || '');
+  const [email] = useState(currentUser?.email || '');
+  const [address, setAddress] = useState(currentUser?.address || '');
+  const [city, setCity] = useState(currentUser?.city || '');
   const [country, setCountry] = useState(currentUser?.country || 'Indonesia');
-  const [emergencyName, setEmergencyName] = useState(currentUser?.emergencyContact?.name || 'Windah Basudara');
-  const [emergencyPhone, setEmergencyPhone] = useState(currentUser?.emergencyContact?.phone || '+62 811 2222 3333');
+  const [emergencyName, setEmergencyName] = useState(currentUser?.emergencyContact?.name || '');
+  const [emergencyPhone, setEmergencyPhone] = useState(currentUser?.emergencyContact?.phone || '');
+  const [uploading, setUploading] = useState(false);
+  const [avatarError, setAvatarError] = useState('');
+  const avatarInput = useRef<HTMLInputElement>(null);
+
+  const handleAvatarPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !currentUser) return;
+    setUploading(true);
+    setAvatarError('');
+    try {
+      const url = await uploadAvatar(currentUser.id, file);
+      updateUserProfile({ avatar: url });
+    } catch (err: any) {
+      setAvatarError(err?.message ?? 'Gagal mengunggah foto.');
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const languages = ['Bahasa Indonesia', 'English', 'Arabic', 'Japanese', 'Korean', 'French'];
 
@@ -40,7 +66,8 @@ export const ProfileScreen: React.FC = () => {
     updateUserProfile({
       name,
       phone,
-      email,
+      gender,
+      birthDate: displayToIso(birthDate),
       address,
       city,
       country,
@@ -112,14 +139,23 @@ export const ProfileScreen: React.FC = () => {
                 />
                 <button
                   type="button"
-                  className="absolute bottom-0 right-0 p-1.5 rounded-full bg-[#19324d] text-white shadow"
+                  disabled={uploading}
+                  onClick={() => avatarInput.current?.click()}
+                  className="absolute bottom-0 right-0 p-1.5 rounded-full bg-[#19324d] text-white shadow disabled:opacity-60"
                 >
                   <Camera className="w-4 h-4" />
                 </button>
+                <input ref={avatarInput} type="file" accept="image/*" className="hidden" onChange={(e) => void handleAvatarPick(e)} />
               </div>
-              <button type="button" className="text-xs font-bold text-sky-600 hover:underline">
-                Ubah Foto
+              <button
+                type="button"
+                disabled={uploading}
+                onClick={() => avatarInput.current?.click()}
+                className="text-xs font-bold text-sky-600 hover:underline disabled:opacity-60"
+              >
+                {uploading ? 'Mengunggah…' : 'Ubah Foto'}
               </button>
+              {avatarError && <p className="text-[11px] text-red-500">{avatarError}</p>}
             </div>
 
             {/* Informasi Pribadi */}
@@ -178,8 +214,9 @@ export const ProfileScreen: React.FC = () => {
                 <input
                   type="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:bg-slate-800 dark:border-slate-700 text-xs focus:outline-none"
+                  readOnly
+                  title="Email dipakai untuk login dan tidak dapat diubah di sini"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-100 text-slate-500 dark:bg-slate-800 dark:border-slate-700 text-xs focus:outline-none cursor-not-allowed"
                 />
               </div>
 

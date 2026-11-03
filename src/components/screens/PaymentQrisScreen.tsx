@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 
 export const PaymentQrisScreen: React.FC = () => {
-  const { activeBooking, paymentInfo, processPaymentSuccess, setActiveScreen } = useAppStore();
+  const { activeBooking, paymentInfo, processPaymentSuccess, demoPayCurrent, setActiveScreen } = useAppStore();
   const [seconds, setSeconds] = useState(() => {
     const exp = paymentInfo?.expiresAt ? Math.floor((new Date(paymentInfo.expiresAt).getTime() - Date.now()) / 1000) : 900;
     return Math.max(0, Math.min(exp, 24 * 3600));
@@ -72,7 +72,15 @@ export const PaymentQrisScreen: React.FC = () => {
                 <div className="text-xl font-black text-[#19324d] tracking-wider mt-1">{paymentInfo.vaNumber}</div>
               </div>
             ) : (
-              <QrCode className="w-48 h-48 text-slate-300" />
+              paymentInfo?.demo ? (
+                <div className="w-48 h-48 flex flex-col items-center justify-center text-center gap-2">
+                  <QrCode className="w-20 h-20 text-slate-300" />
+                  <span className="text-xs font-bold text-amber-600 uppercase tracking-wider">Mode Uji Coba</span>
+                  <span className="text-[10px] text-slate-400">Tekan tombol di bawah untuk menyimulasikan pembayaran</span>
+                </div>
+              ) : (
+                <QrCode className="w-48 h-48 text-slate-300" />
+              )
             )}
             <span className="text-[10px] font-mono text-slate-400 mt-1 uppercase tracking-widest">
               {paymentInfo?.vaNumber ? paymentInfo.method : 'QRIS NASIONAL ID'}
@@ -122,12 +130,17 @@ export const PaymentQrisScreen: React.FC = () => {
 
       {/* STICKY BOTTOM BUTTON */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-6 py-3.5 z-40 shadow-lg">
-        <div className="max-w-2xl mx-auto">
+        <div className="max-w-2xl mx-auto space-y-2">
+          {paymentInfo?.demo && (
+            <p className="text-center text-[11px] text-amber-700 font-semibold">
+              MODE UJI: pembayaran hanya disimulasikan, tidak ada uang yang dipindahkan.
+            </p>
+          )}
           <button
-            onClick={() => void processPaymentSuccess()}
+            onClick={() => void (paymentInfo?.demo ? demoPayCurrent() : processPaymentSuccess())}
             className="w-full py-3.5 bg-[#19324d] hover:bg-[#122438] text-white font-extrabold text-xs sm:text-sm uppercase tracking-wider rounded-full shadow-md active:scale-98 transition-all flex items-center justify-center gap-2"
           >
-            <span>SAYA SUDAH BAYAR · CEK STATUS</span>
+            <span>{paymentInfo?.demo ? 'SIMULASIKAN PEMBAYARAN BERHASIL' : 'SAYA SUDAH BAYAR · CEK STATUS'}</span>
           </button>
         </div>
       </div>

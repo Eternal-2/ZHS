@@ -6,7 +6,6 @@ import { RegisterScreen } from './components/screens/RegisterScreen';
 import { HomeScreen } from './components/screens/HomeScreen';
 import { ExploreScreen } from './components/ExploreScreen';
 import { DetailTourScreen } from './components/screens/DetailTourScreen';
-import { DetailDestinasiScreen } from './components/screens/DetailDestinasiScreen';
 import { BookingConfirmScreen } from './components/screens/BookingConfirmScreen';
 import { PaymentQrisScreen } from './components/screens/PaymentQrisScreen';
 import { PaymentSuccessScreen } from './components/screens/PaymentSuccessScreen';
@@ -82,7 +81,7 @@ export function App() {
       case 'detail-tour':
         return <DetailTourScreen />;
       case 'detail-destinasi':
-        return <DetailDestinasiScreen />;
+        return <DetailTourScreen />;
       case 'booking-confirm':
         return <BookingConfirmScreen />;
       case 'payment-qris':

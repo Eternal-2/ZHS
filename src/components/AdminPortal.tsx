@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { Lock, ShieldCheck } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { AdminGuideReviewScreen } from './screens/AdminGuideReviewScreen';
+import { AdminSupportInbox } from './screens/AdminSupportInbox';
 
 type Phase = 'checking' | 'login' | 'panel';
 
@@ -18,6 +19,8 @@ const DENIED = 'Email atau password salah, atau akun ini tidak memiliki akses ad
 export default function AdminPortal() {
   const [phase, setPhase] = useState<Phase>('checking');
   const [adminName, setAdminName] = useState('');
+  const [adminId, setAdminId] = useState('');
+  const [tab, setTab] = useState<'verifikasi' | 'bantuan'>('verifikasi');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -34,6 +37,7 @@ export default function AdminPortal() {
       .maybeSingle();
     if (profile?.role !== 'admin') return false;
     setAdminName(profile.full_name);
+    setAdminId(data.session.user.id);
     return true;
   };
 
@@ -76,7 +80,37 @@ export default function AdminPortal() {
     );
   }
 
-  if (phase === 'panel') return <AdminGuideReviewScreen adminName={adminName} onLogout={() => void handleLogout()} />;
+  if (phase === 'panel') {
+    return (
+      <div className="min-h-screen bg-[#f8fafc]">
+        <div className="sticky top-0 z-30 bg-white border-b border-slate-200">
+          <div className="max-w-3xl mx-auto px-4 flex gap-1">
+            {([['verifikasi', 'Verifikasi Pemandu'], ['bantuan', 'Pusat Bantuan']] as const).map(([id, label]) => (
+              <button
+                key={id}
+                onClick={() => setTab(id)}
+                className={`px-4 py-3 text-xs font-bold border-b-2 transition-colors ${
+                  tab === id ? 'border-[#19324d] text-[#19324d]' : 'border-transparent text-slate-400 hover:text-slate-600'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        {tab === 'verifikasi' ? (
+          <AdminGuideReviewScreen adminName={adminName} onLogout={() => void handleLogout()} />
+        ) : (
+          <>
+            <div className="max-w-3xl mx-auto px-4 pt-4 flex justify-end">
+              <button onClick={() => void handleLogout()} className="text-[11px] text-slate-500 underline">Keluar ({adminName})</button>
+            </div>
+            <AdminSupportInbox adminId={adminId} />
+          </>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#f8fafc] flex items-center justify-center px-4">

@@ -11,6 +11,7 @@ export interface DestinationItem {
   meetingPoints: { id: string; name: string; desc: string }[];
   highlights?: string[];
   reviewsCount?: number;
+  ratingAvg?: number;   // skala 5, dari database
 }
 
 export function calculatePerPaxPrice(basePrice: number, participants: number): {

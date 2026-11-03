@@ -13,7 +13,8 @@ export const AIChatbotWidget: React.FC = () => {
     sendAiMessage, 
     isAiLoading,
     setActiveScreen,
-    activeScreen
+    activeScreen,
+    escalateToAdmin
   } = useAppStore();
 
   const [inputText, setInputText] = useState('');
@@ -245,6 +246,12 @@ export const AIChatbotWidget: React.FC = () => {
                   {chip.label}
                 </button>
               ))}
+              <button
+                onClick={() => void escalateToAdmin()}
+                className="px-2.5 py-1 bg-purple-50 hover:bg-purple-100 border border-purple-300 rounded-full text-[10px] font-semibold text-purple-700 whitespace-nowrap active:scale-95"
+              >
+                👤 Hubungi Admin
+              </button>
             </div>
 
             {/* Input Bar */}

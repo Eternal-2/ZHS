@@ -33,6 +33,8 @@ export function profileToUser(p: any, email: string): User {
     level: p.level ?? 'Explorer',
     isVerified: !!p.is_verified,
     address: p.address ?? undefined,
+    gender: p.gender ?? undefined,
+    birthDate: p.birth_date ?? undefined,
     city: p.city ?? undefined,
     country: p.country ?? undefined,
     languages: p.languages ?? [],
@@ -133,6 +135,9 @@ export async function updateProfileRow(userId: string, patch: Partial<User>) {
   if (patch.name !== undefined) row.full_name = patch.name;
   if (patch.username !== undefined) row.username = patch.username;
   if (patch.phone !== undefined) row.phone = patch.phone;
+  if (patch.avatar !== undefined) row.avatar_url = patch.avatar;
+  if (patch.gender !== undefined) row.gender = patch.gender || null;
+  if (patch.birthDate !== undefined) row.birth_date = patch.birthDate || null;
   if (patch.address !== undefined) row.address = patch.address;
   if (patch.city !== undefined) row.city = patch.city;
   if (patch.country !== undefined) row.country = patch.country;

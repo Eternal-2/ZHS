@@ -1,3 +1,4 @@
+import { QRCodeSVG } from 'qrcode.react';
 import React, { useState } from 'react';
 import { useAppStore, BookingState } from '../../store/useAppStore';
 import { 
@@ -11,7 +12,7 @@ export const BookingDetailScreen: React.FC = () => {
     userBookings, 
     setActiveScreen, 
     toggleCancelModal, 
-    initDraftBooking, 
+    openDestination, 
     setActiveBookingById, 
     markTourCompleted,
     openDirectChat,
@@ -375,8 +376,8 @@ export const BookingDetailScreen: React.FC = () => {
 
                           <button
                             onClick={() => {
-                              initDraftBooking(booking.title, booking.destination);
-                              setActiveScreen('detail-tour');
+                              if (booking.destinationId) openDestination(booking.destinationId);
+                              else setActiveScreen('explore');
                             }}
                             className="px-3.5 py-2 bg-[#19324d] hover:bg-[#122438] text-white text-xs font-bold rounded-xl shadow-sm transition-all flex items-center gap-1.5"
                           >
@@ -456,7 +457,7 @@ export const BookingDetailScreen: React.FC = () => {
                   KODE QR CHECK-IN RESMI
                 </span>
                 <div className="w-28 h-28 bg-white border border-slate-200 rounded-2xl mx-auto flex items-center justify-center p-2 shadow-xs">
-                  <QrCode className="w-full h-full text-[#19324d]" />
+                  <QRCodeSVG value={detailModalBooking.checkInQrCode || 'ZHS'} size={112} level="M" className="w-full h-full" fgColor="#19324d" />
                 </div>
                 <span className="text-[11px] font-mono font-bold text-slate-700 block">
                   {detailModalBooking.checkInQrCode}

@@ -154,7 +154,10 @@ export const BookingConfirmScreen: React.FC = () => {
         {/* HEADER BAR */}
         <div className="flex items-center justify-between pb-2 border-b border-slate-200">
           <button
-            onClick={() => setActiveScreen('detail-tour')}
+            onClick={() => {
+              useAppStore.setState({ selectedDestinationId: activeBooking.destinationId ?? null });
+              setActiveScreen('detail-tour');
+            }}
             className="flex items-center gap-2 text-xs sm:text-sm font-semibold text-[#19324d] hover:underline"
           >
             <ArrowLeft className="w-4 h-4" />

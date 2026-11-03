@@ -743,10 +743,10 @@ export const GuideRegisterScreen: React.FC = () => {
                     playsInline
                     muted
                     autoPlay
-                    className={`absolute inset-0 w-full h-full object-cover scale-x-[-1] ${faceCam.status === 'ready' ? '' : 'hidden'}`}
+                    className={`absolute inset-0 w-full h-full object-cover ${faceCam.facing === 'user' ? 'scale-x-[-1]' : ''} ${faceCam.status === 'ready' ? '' : 'hidden'}`}
                   />
                   {faceVerified && faceImage && (
-                    <img src={faceImage} alt="Foto wajah" className="absolute inset-0 w-full h-full object-cover scale-x-[-1]" />
+                    <img src={faceImage} alt="Foto wajah" className={`absolute inset-0 w-full h-full object-cover ${faceCam.facing === 'user' ? 'scale-x-[-1]' : ''}`} />
                   )}
                   {!faceVerified && faceCam.status !== 'ready' && (
                     <div className="absolute inset-0 flex items-center justify-center text-center">
@@ -801,6 +801,16 @@ export const GuideRegisterScreen: React.FC = () => {
 
               {!faceVerified ? (
                 faceCam.status === 'ready' ? (
+                  <>
+                    {faceCam.canFlip && (
+                      <button
+                        type="button"
+                        onClick={() => void faceCam.flip()}
+                        className="w-full py-2.5 mb-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-2xl"
+                      >
+                        🔄 Ganti Kamera ({faceCam.facing === 'user' ? 'sekarang: depan' : 'sekarang: belakang'})
+                      </button>
+                    )}
                   <button
                     onClick={handleFaceCapture}
                     className="w-full py-4 bg-[#19324d] hover:bg-[#122438] text-white font-extrabold text-sm uppercase tracking-wider rounded-2xl shadow-md transition-all flex items-center justify-center gap-2"
@@ -808,6 +818,7 @@ export const GuideRegisterScreen: React.FC = () => {
                     <Camera className="w-4 h-4" />
                     Ambil Foto Wajah
                   </button>
+                  </>
                 ) : (
                   <button
                     onClick={() => void faceCam.start()}
@@ -878,6 +889,15 @@ export const GuideRegisterScreen: React.FC = () => {
                     <div className="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 border-amber-400 rounded-br" />
                   </div>
                 </div>
+              )}
+              {!ktpDraft && ktpCam.status === 'ready' && ktpCam.canFlip && (
+                <button
+                  type="button"
+                  onClick={() => void ktpCam.flip()}
+                  className="absolute top-3 right-3 px-3 py-1.5 bg-black/60 hover:bg-black/80 text-white text-[11px] font-bold rounded-full"
+                >
+                  🔄 Ganti Kamera
+                </button>
               )}
               {!ktpDraft && ktpCam.status !== 'ready' && (
                 <div className="absolute inset-0 flex items-center justify-center p-5 text-center text-white/80 text-xs">

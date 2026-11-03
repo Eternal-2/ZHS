@@ -8,6 +8,11 @@ import { loadCatalog } from '../services/catalogService';
 import { fetchCurrentUser, signInWithPassword, signOut, updateProfileRow } from '../services/authService';
 import type { PaymentInfo } from '../services/bookingService';
 import {
+  fetchNotifications, markNotificationRead, markAllNotificationsRead, subscribeNotifications,
+  fetchAiHistory, saveAiMessages, fetchPaymentMode, demoPay, fetchPointsHistory, createTicket, ticketCode
+} from '../services/tourismService';
+import type { AppNotification, PointsTx } from '../services/tourismService';
+import {
   fetchMyBookings, fetchBookingByDbId, createBooking, createPayment, subscribeBookingStatus,
   cancelBookingRpc, guideConfirmRpc, guideStartTourRpc, completeTourRpc, redeemVoucherRpc,
   requestWithdrawalRpc, fetchWalletBalance, fetchPoints, runSmartMatch,
@@ -74,6 +79,8 @@ export interface User {
   address?: string;
   city?: string;
   country?: string;
+  gender?: string;
+  birthDate?: string;   // format ISO yyyy-mm-dd
   languages?: string[];
   travelPreferences?: string[];
   emergencyContact?: {
@@ -234,6 +241,16 @@ interface AppState {
   isCancelModalOpen: boolean;
   isAiLoading: boolean;
   catalogReady: boolean;
+  selectedDestinationId: string | null;
+  notifications: AppNotification[];
+  pointsHistory: PointsTx[];
+  openDestination: (slug: string) => void;
+  loadNotifications: () => Promise<void>;
+  markNotificationRead: (id: string) => Promise<void>;
+  markAllNotificationsRead: () => Promise<void>;
+  loadPointsHistory: () => Promise<void>;
+  escalateToAdmin: () => Promise<void>;
+  demoPayCurrent: () => Promise<void>;
   paymentInfo: PaymentInfo | null;
   bookingBusy: boolean;
   bookingError: string | null;
@@ -322,8 +339,9 @@ interface AppState {
 let authListenerBound = false;
 let stopPayment: (() => void) | null = null;
 let stopChat: (() => void) | null = null;
+let stopNotif: (() => void) | null = null;
 const stopChatWatcher = () => { stopChat?.(); stopChat = null; };
-const stopWatchers = () => { stopPayment?.(); stopPayment = null; stopChatWatcher(); };
+const stopWatchers = () => { stopPayment?.(); stopPayment = null; stopChatWatcher(); stopNotif?.(); stopNotif = null; };
 
 const chatContext = (booking: BookingState, me: User) => {
   const myRole: 'wisatawan' | 'pemandu' = me.role === 'pemandu' ? 'pemandu' : 'wisatawan';
@@ -376,6 +394,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   appliedVoucherCode: null,
   pointsBalance: 0,
   catalogReady: false,
+  selectedDestinationId: null,
+  notifications: [],
+  pointsHistory: [],
   paymentInfo: null,
   bookingBusy: false,
   bookingError: null,
@@ -417,6 +438,82 @@ export const useAppStore = create<AppState>((set, get) => ({
   setDarkMode: (val) => set({ darkMode: val }),
   setSelectedLanguage: (lang) => set({ selectedLanguage: lang }),
   
+  openDestination: (slug) => {
+    const dest = AVAILABLE_DESTINATIONS.find((d) => d.id === slug);
+    if (!dest) return;
+    get().initDraftBooking(dest);
+    set({ selectedDestinationId: slug, activeScreen: 'detail-tour' });
+  },
+
+  loadNotifications: async () => {
+    try {
+      set({ notifications: await fetchNotifications() });
+    } catch (e) {
+      console.error('[ZHS] Gagal memuat notifikasi:', e);
+    }
+  },
+
+  markNotificationRead: async (id) => {
+    set((s) => ({ notifications: s.notifications.map((n) => (n.id === id ? { ...n, isRead: true } : n)) }));
+    try { await markNotificationRead(id); } catch (e) { console.error(e); }
+  },
+
+  markAllNotificationsRead: async () => {
+    const user = get().currentUser;
+    if (!user) return;
+    set((s) => ({ notifications: s.notifications.map((n) => ({ ...n, isRead: true })) }));
+    try { await markAllNotificationsRead(user.id); } catch (e) { console.error(e); }
+  },
+
+  loadPointsHistory: async () => {
+    const user = get().currentUser;
+    if (!user) return;
+    try {
+      set({ pointsHistory: await fetchPointsHistory(user.id) });
+    } catch (e) {
+      console.error('[ZHS] Gagal memuat riwayat poin:', e);
+    }
+  },
+
+  // Dari chat AI: buat tiket bantuan berisi cuplikan percakapan, balasan admin muncul di Pusat Bantuan.
+  escalateToAdmin: async () => {
+    const time = () => new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
+    const push = (sender: 'ai' | 'admin', text: string) =>
+      set((s) => ({ chatMessages: [...s.chatMessages, { id: `${sender}-${Date.now()}`, sender, text, timestamp: time() }] }));
+    const { currentUser, chatMessages } = get();
+    if (!currentUser) {
+      push('ai', 'Untuk menghubungi Admin, silakan masuk ke akun Anda terlebih dahulu. Saya akan mengarahkan Anda ke halaman masuk.');
+      set({ redirectAfterLogin: 'help-center', activeScreen: 'login', isAiDrawerOpen: false });
+      return;
+    }
+    const transcript = chatMessages
+      .filter((m) => m.sender !== 'admin')
+      .slice(-8)
+      .map((m) => `${m.sender === 'user' ? 'Saya' : 'AI'}: ${m.text}`)
+      .join('\n');
+    try {
+      const id = await createTicket(
+        'Bantuan dari chat AI',
+        `Saya meminta bantuan langsung dari Admin.\n\nCuplikan percakapan:\n${transcript}`,
+        'ai_handoff'
+      );
+      push('admin', `Tiket bantuan ${ticketCode(id)} sudah dibuat. Tim ZHS akan membalas di Pusat Bantuan, dan Anda akan mendapat notifikasi.`);
+    } catch (e: any) {
+      push('ai', `Maaf, tiket belum bisa dibuat: ${e?.message ?? 'terjadi kesalahan'}.`);
+    }
+  },
+
+  demoPayCurrent: async () => {
+    const booking = get().activeBooking;
+    if (!booking.dbId) return;
+    try {
+      await demoPay(booking.dbId);
+      await get().processPaymentSuccess();
+    } catch (e: any) {
+      window.alert(e?.message ?? 'Pembayaran uji gagal');
+    }
+  },
+
   initApp: async () => {
     await loadCatalog();
     set({ catalogReady: true, activeBooking: makeDefaultBooking() });
@@ -462,6 +559,26 @@ export const useAppStore = create<AppState>((set, get) => ({
       activeScreen: next,
       redirectAfterLogin: null
     }));
+
+    // Notifikasi (realtime) dan riwayat chat AI milik user
+    void get().loadNotifications();
+    stopNotif?.();
+    stopNotif = subscribeNotifications(user.id, (n) =>
+      set((s) => ({ notifications: [n, ...s.notifications.filter((x) => x.id !== n.id)] }))
+    );
+    fetchAiHistory(user.id)
+      .then((rows) => {
+        if (rows.length === 0) return;
+        const toMsg = (r: (typeof rows)[number]) => ({
+          id: r.id,
+          sender: r.sender,
+          text: r.body,
+          timestamp: new Date(r.createdAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB',
+          isGemini: r.sender === 'ai'
+        });
+        set((s) => ({ chatMessages: [s.chatMessages[0], ...rows.map(toMsg)] }));
+      })
+      .catch(() => undefined);
   },
 
   signIn: async (email, password) => {
@@ -475,6 +592,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({
       currentUser: null, userBookings: [], activeBooking: makeDefaultBooking(), currentDraftBooking: null,
       pointsBalance: 0, guideWithdrawableBalance: 0, directChatMessages: [], paymentInfo: null,
+      notifications: [], pointsHistory: [], chatMessages: get().chatMessages.slice(0, 1), selectedDestinationId: null,
       activeScreen: 'welcome', redirectAfterLogin: null
     });
   },
@@ -495,12 +613,16 @@ export const useAppStore = create<AppState>((set, get) => ({
       isAiLoading: true
     }));
     let reply: string;
+    let failed = false;
     try {
       reply = await callGeminiApi(text, history);
     } catch (err) {
       console.error('Error fetching AI response:', err);
+      failed = true;
       reply = 'Maaf, asisten AI sedang tidak dapat dihubungi. Silakan coba beberapa saat lagi.';
     }
+    const me = get().currentUser;
+    if (me && !failed) void saveAiMessages(me.id, [{ sender: 'user', body: text }, { sender: 'ai', body: reply }]);
     set((state) => ({
       chatMessages: [...state.chatMessages, { id: `ai-${Date.now()}`, sender: 'ai', text: reply, timestamp: time(), isGemini: true }],
       isAiLoading: false
@@ -873,7 +995,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ bookingBusy: true, bookingError: null });
     try {
       const created = await createBooking({ ...draft, paymentMethod: method });   // harga dihitung ulang di server
-      const payment = await createPayment(created.dbId!, method);                 // tagihan ke payment gateway
+      const mode = await fetchPaymentMode();
+      const payment: PaymentInfo = mode === 'demo'
+        ? { method, demo: true }                                                 // uji coba: tanpa payment gateway
+        : await createPayment(created.dbId!, method);                            // tagihan ke payment gateway
       const booking = { ...created, paymentMethod: method };
       set((state) => ({
         bookingBusy: false,

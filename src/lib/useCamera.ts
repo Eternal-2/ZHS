@@ -23,10 +23,13 @@ const explain = (e: any): string => {
  * facing: 'user' = kamera depan (selfie), 'environment' = kamera belakang (dokumen).
  * Letakkan <video ref={videoRef} playsInline muted autoPlay /> di JSX, lalu panggil start().
  */
-export function useCamera(facing: 'user' | 'environment') {
+export function useCamera(initialFacing: 'user' | 'environment') {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const attemptRef = useRef(0);
+  const facingRef = useRef<'user' | 'environment'>(initialFacing);
+  const [facing, setFacing] = useState<'user' | 'environment'>(initialFacing);
+  const [canFlip, setCanFlip] = useState(false);   // true jika perangkat punya lebih dari satu kamera
   const [status, setStatus] = useState<CameraStatus>('idle');
   const [error, setError] = useState('');
 
@@ -39,6 +42,7 @@ export function useCamera(facing: 'user' | 'environment') {
   }, []);
 
   const start = useCallback(async () => {
+    const facing = facingRef.current;
     const attempt = ++attemptRef.current;
     setError('');
     setStatus('starting');
@@ -70,12 +74,24 @@ export function useCamera(facing: 'user' | 'environment') {
         await video.play().catch(() => undefined);
       }
       setStatus('ready');
+      // setelah izin diberikan, daftar kamera baru terbaca lengkap
+      navigator.mediaDevices.enumerateDevices()
+        .then((list) => setCanFlip(list.filter((d) => d.kind === 'videoinput').length > 1))
+        .catch(() => undefined);
     } catch (e: any) {
       if (attempt !== attemptRef.current) return;
       setError(explain(e));
       setStatus('error');
     }
-  }, [facing]);
+  }, []);
+
+  /** Pindah antara kamera depan dan belakang. */
+  const flip = useCallback(async () => {
+    const next = facingRef.current === 'user' ? 'environment' : 'user';
+    facingRef.current = next;
+    setFacing(next);
+    await start();
+  }, [start]);
 
   /** Ambil gambar dari tampilan kamera saat ini (data URL JPEG), atau null jika kamera belum siap. */
   const capture = useCallback((): string | null => {
@@ -91,5 +107,5 @@ export function useCamera(facing: 'user' | 'environment') {
   // matikan kamera saat komponen ditutup
   useEffect(() => stop, [stop]);
 
-  return { videoRef, status, error, start, stop, capture };
+  return { videoRef, status, error, start, stop, capture, facing, canFlip, flip };
 }

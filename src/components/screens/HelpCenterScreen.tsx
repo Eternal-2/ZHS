@@ -1,4 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  createTicket, fetchMyTickets, fetchTicketMessages, sendTicketMessage, subscribeTicketMessages, ticketCode
+} from '../../services/tourismService';
+import type { SupportMessage, SupportTicket } from '../../services/tourismService';
 import { useAppStore } from '../../store/useAppStore';
 import { 
   ArrowLeft, Search, ChevronDown, ChevronUp, MessageSquare, 
@@ -6,26 +10,44 @@ import {
 } from 'lucide-react';
 
 export const HelpCenterScreen: React.FC = () => {
-  const { activeScreen, setActiveScreen } = useAppStore();
+  const { activeScreen, setActiveScreen, currentUser, setRedirectAfterLogin } = useAppStore();
   const [openFaq, setOpenFaq] = useState<number | null>(0);
-  const [adminMessages, setAdminMessages] = useState<{ sender: 'user' | 'admin'; text: string; time: string }[]>([
-    {
-      sender: 'admin',
-      text: 'Halo! Selamat datang di layanan customer service Zamzam Hidden Spot. Ada yang bisa kami bantu?',
-      time: '09:00 WIB'
-    },
-    {
-      sender: 'user',
-      text: 'Saya ingin menanyakan tentang status reservasi wisata dan kebijakan pengembalian dana.',
-      time: '09:01 WIB'
-    },
-    {
-      sender: 'admin',
-      text: 'Baik, kami cek dulu ya. Tim kami sedang memvalidasi catatan transaksi rekening Escrow Anda.',
-      time: '09:02 WIB'
-    }
-  ]);
+  const [ticket, setTicket] = useState<SupportTicket | null>(null);
+  const [messages, setMessages] = useState<SupportMessage[]>([]);
+  const [chatError, setChatError] = useState('');
+  const [sending, setSending] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
   const [inputText, setInputText] = useState('');
+
+  // Muat tiket terbuka milik user + pesannya, lalu dengarkan balasan admin secara realtime
+  const loadThread = async () => {
+    const tickets = await fetchMyTickets();
+    const current = tickets.find((t) => t.status !== 'closed') ?? null;
+    setTicket(current);
+    setMessages(current ? await fetchTicketMessages(current.id) : []);
+    return current;
+  };
+
+  useEffect(() => {
+    if (activeScreen !== 'admin-chat' || !currentUser) return;
+    let unsubscribe: (() => void) | undefined;
+    let cancelled = false;
+    setChatError('');
+    loadThread()
+      .then((current) => {
+        if (cancelled || !current) return;
+        unsubscribe = subscribeTicketMessages(current.id, (m) =>
+          setMessages((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, m]))
+        );
+      })
+      .catch((e) => setChatError(e?.message ?? 'Gagal memuat percakapan'));
+    return () => { cancelled = true; unsubscribe?.(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeScreen, currentUser?.id]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages.length]);
 
   const faqs = [
     {
@@ -50,28 +72,37 @@ export const HelpCenterScreen: React.FC = () => {
     }
   ];
 
-  const handleSendAdminChat = (e: React.FormEvent) => {
+  const handleSendAdminChat = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputText.trim()) return;
-    const newMsg = {
-      sender: 'user' as const,
-      text: inputText.trim(),
-      time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB'
-    };
-    setAdminMessages((m) => [...m, newMsg]);
+    const text = inputText.trim();
+    if (!text || !currentUser || sending) return;
+    setSending(true);
+    setChatError('');
     setInputText('');
-
-    setTimeout(() => {
-      setAdminMessages((m) => [
-        ...m,
-        {
-          sender: 'admin',
-          text: 'Pesan Anda telah kami catat di Tiket Bantuan #HB-2041. Petugas operasional ZHS akan segera menghubungi Anda kembali.',
-          time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB'
+    try {
+      if (!ticket) {
+        await createTicket(text.slice(0, 80), text, 'help_center');   // pesan pertama membuka tiket baru
+        const current = await loadThread();
+        if (current) {
+          subscribeTicketMessages(current.id, (m) =>
+            setMessages((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, m]))
+          );
         }
-      ]);
-    }, 800);
+      } else {
+        await sendTicketMessage(ticket.id, currentUser.id, text);
+        setMessages(await fetchTicketMessages(ticket.id));
+      }
+    } catch (err: any) {
+      setChatError(err?.message ?? 'Pesan gagal terkirim');
+      setInputText(text);
+    } finally {
+      setSending(false);
+    }
   };
+
+  const fmtTime = (iso: string) =>
+    new Date(iso).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
+  const statusLabel = ticket?.status === 'answered' ? 'Sudah dibalas' : 'Menunggu balasan';
 
   return (
     <div className="min-h-screen bg-[#f8fafc] text-slate-800 pb-24">
@@ -112,38 +143,63 @@ export const HelpCenterScreen: React.FC = () => {
                   <h3 className="font-bold text-xs text-[#19324d]">Admin Zamzam Spot</h3>
                   <div className="flex items-center gap-1.5 text-[10px] text-emerald-600 font-semibold">
                     <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                    <span>Layanan Bantuan Pelanggan Online</span>
+                    <span>Tim bantuan membalas di sini</span>
                   </div>
                 </div>
               </div>
 
               <div className="text-right">
-                <span className="text-[9px] bg-red-100 text-red-700 font-extrabold px-2 py-0.5 rounded uppercase">
-                  PRIORITAS
+                <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded uppercase ${
+                  ticket?.status === 'answered' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                }`}>
+                  {ticket ? statusLabel : 'Tiket Baru'}
                 </span>
-                <span className="text-[10px] text-slate-500 block font-mono">Tiket #HB-2041</span>
+                <span className="text-[10px] text-slate-500 block font-mono">{ticket ? ticketCode(ticket.id) : 'Belum ada tiket'}</span>
               </div>
             </div>
 
             {/* Chat Body */}
             <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-[#f8fafc]">
-              {adminMessages.map((msg, i) => (
-                <div
-                  key={i}
-                  className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}
-                >
-                  <div
-                    className={`p-3.5 rounded-2xl text-xs max-w-[85%] leading-relaxed ${
-                      msg.sender === 'user'
-                        ? 'bg-[#19324d] text-white rounded-tr-none shadow-sm'
-                        : 'bg-white border border-slate-200 text-slate-800 rounded-tl-none shadow-sm'
-                    }`}
+              {!currentUser ? (
+                <div className="h-full flex flex-col items-center justify-center text-center gap-3 text-xs text-slate-500">
+                  <p>Masuk ke akun Anda untuk menghubungi Tim Bantuan.</p>
+                  <button
+                    onClick={() => { setRedirectAfterLogin('admin-chat'); setActiveScreen('login'); }}
+                    className="px-4 py-2 bg-[#19324d] text-white font-bold rounded-xl"
                   >
-                    {msg.text}
-                  </div>
-                  <span className="text-[9px] text-slate-400 mt-1 px-1">{msg.time}</span>
+                    Masuk
+                  </button>
                 </div>
-              ))}
+              ) : (
+                <>
+                  {messages.length === 0 && (
+                    <div className="flex flex-col items-start">
+                      <div className="p-3.5 rounded-2xl text-xs max-w-[85%] leading-relaxed bg-white border border-slate-200 text-slate-800 rounded-tl-none shadow-sm">
+                        Halo! Tuliskan pertanyaan atau kendala Anda. Pesan pertama akan membuka tiket bantuan, dan tim ZHS akan membalas di sini.
+                      </div>
+                    </div>
+                  )}
+                  {messages.map((msg) => {
+                    const mine = msg.senderId === currentUser.id;
+                    return (
+                      <div key={msg.id} className={`flex flex-col ${mine ? 'items-end' : 'items-start'}`}>
+                        <div
+                          className={`p-3.5 rounded-2xl text-xs max-w-[85%] leading-relaxed whitespace-pre-line ${
+                            mine
+                              ? 'bg-[#19324d] text-white rounded-tr-none shadow-sm'
+                              : 'bg-white border border-slate-200 text-slate-800 rounded-tl-none shadow-sm'
+                          }`}
+                        >
+                          {msg.body}
+                        </div>
+                        <span className="text-[9px] text-slate-400 mt-1 px-1">{mine ? 'Anda' : 'Admin ZHS'} · {fmtTime(msg.createdAt)}</span>
+                      </div>
+                    );
+                  })}
+                  {chatError && <p className="text-xs text-red-600">{chatError}</p>}
+                  <div ref={bottomRef} />
+                </>
+              )}
             </div>
 
             {/* Input Bar */}
@@ -155,12 +211,14 @@ export const HelpCenterScreen: React.FC = () => {
                 type="text"
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
+                disabled={!currentUser || sending}
                 placeholder="Tulis pesan ke admin..."
                 className="flex-1 px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-[#19324d]"
               />
               <button
                 type="submit"
-                className="p-2.5 bg-[#19324d] text-white rounded-xl shadow hover:bg-[#122438]"
+                disabled={!currentUser || sending || !inputText.trim()}
+                className="p-2.5 bg-[#19324d] text-white rounded-xl shadow hover:bg-[#122438] disabled:opacity-50"
               >
                 <Send className="w-4 h-4" />
               </button>

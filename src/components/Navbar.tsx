@@ -14,8 +14,10 @@ export const Navbar: React.FC = () => {
     activeScreen, 
     setActiveScreen, 
     toggleAiDrawer, 
-    logout 
+    logout,
+    notifications
   } = useAppStore();
+  const unreadCount = notifications.filter((n) => !n.isRead).length;
 
   const isGuide = currentUser?.role === 'pemandu';
   const isGuest = !currentUser;
@@ -181,7 +183,11 @@ export const Navbar: React.FC = () => {
                 title="Notifikasi"
               >
                 <Bell className="w-5 h-5" />
-                <span className="w-2 h-2 rounded-full bg-red-500 absolute top-1.5 right-1.5" />
+                {unreadCount > 0 && (
+                  <span className="min-w-4 h-4 px-1 bg-red-500 text-white text-[9px] font-extrabold rounded-full absolute -top-0.5 -right-0.5 flex items-center justify-center">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
               </button>
 
               {/* Profile Avatar */}

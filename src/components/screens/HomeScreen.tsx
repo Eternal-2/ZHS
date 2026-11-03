@@ -1,48 +1,26 @@
 import React from 'react';
 import { useAppStore } from '../../store/useAppStore';
 import { Bell, Search, Star, ArrowRight } from 'lucide-react';
+import { AVAILABLE_DESTINATIONS } from '../../data/bookingExtras';
 
 export const HomeScreen: React.FC = () => {
-  const { currentUser, setActiveScreen } = useAppStore();
+  const { currentUser, setActiveScreen, notifications, openDestination } = useAppStore();
+  const unreadCount = notifications.filter((n) => !n.isRead).length;
 
-  const tourSpots = [
-    {
-      id: 'situ-buleud',
-      title: 'Situ Buleud & Air Mancur Sri Baduga',
-      location: 'Nagri Kidul, Kec. Purwakarta, Kab. Purwakarta',
-      rating: '9.4/10 (20.290 review)',
-      priceWeekday: 'Rp. 35.000',
-      category: 'Cagar Budaya',
-      image: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=600&q=80'
-    },
-    {
-      id: 'gracia-spa',
-      title: 'Gracia Spa Hot Spring Pool',
-      location: 'Desa Cikondang, Kec. Ciater, Kabupaten Subang',
-      rating: '9.2/10 (8.409 review)',
-      priceWeekday: 'Rp. 100.000',
-      category: 'Wisata Alam',
-      image: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=600&q=80'
-    },
-    {
-      id: 'benteng-vredeburg',
-      title: 'Museum Benteng Vredeburg',
-      location: 'Ngupasan, Kec. Gondomanan, Kota Yogyakarta',
-      rating: '9.4/10 (20.290 review)',
-      priceWeekday: 'Rp. 14.000',
-      category: 'Museum & Sejarah',
-      image: 'https://images.unsplash.com/photo-1513836279014-a89f7a76ae86?auto=format&fit=crop&w=600&q=80'
-    },
-    {
-      id: 'gunung-bromo',
-      title: 'Tur Sunrise Savana Gunung Bromo',
-      location: 'Sumberkedawung, Kec. Leces, Kabupaten Probolinggo',
-      rating: '9.2/10 (1.416 review)',
-      priceWeekday: 'Rp. 400.000',
-      category: 'Petualangan',
-      image: 'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?auto=format&fit=crop&w=600&q=80'
-    }
-  ];
+  // Daftar tur berasal dari katalog database (diurutkan dari rating tertinggi)
+  const catalog = [...AVAILABLE_DESTINATIONS].sort((a, b) => (b.ratingAvg ?? 0) - (a.ratingAvg ?? 0));
+  const featured = catalog[0];
+  const tourSpots = catalog.slice(0, 4).map((d) => ({
+    id: d.id,
+    title: d.title,
+    location: d.location,
+    rating: (d.reviewsCount ?? 0) > 0
+      ? `${(d.ratingAvg ?? 0).toFixed(1)}/5 (${d.reviewsCount} ulasan)`
+      : `${(d.ratingAvg ?? 0).toFixed(1)}/5`,
+    priceWeekday: `Rp ${d.unitPrice.toLocaleString('id-ID')}`,
+    category: d.category,
+    image: d.image
+  }));
 
   return (
     <div className="min-h-screen bg-[#f8fafc] text-slate-800 pb-20 md:pb-12">
@@ -65,9 +43,11 @@ export const HomeScreen: React.FC = () => {
           >
             <Bell className="w-5 h-5 text-[#19324d]" />
             {/* Badge notifikasi belum dibaca */}
-            <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[9px] font-extrabold rounded-full flex items-center justify-center shadow">
-              3
-            </span>
+            {unreadCount > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 bg-red-500 text-white text-[9px] font-extrabold rounded-full flex items-center justify-center shadow">
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            )}
           </button>
         </div>
 
@@ -85,12 +65,12 @@ export const HomeScreen: React.FC = () => {
 
         {/* UNGGULAN HERO BANNER (exact as Figma Page 19) */}
         <div 
-          onClick={() => setActiveScreen('detail-destinasi')}
+          onClick={() => featured && openDestination(featured.id)}
           className="relative h-48 sm:h-64 rounded-3xl overflow-hidden shadow-lg cursor-pointer group"
         >
           <img
-            src="https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80"
-            alt="Jelajahi Indonesia"
+            src={featured?.image ?? 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80'}
+            alt={featured?.title ?? 'Jelajahi Indonesia'}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
@@ -105,7 +85,7 @@ export const HomeScreen: React.FC = () => {
               dengan tur terbaikmu
             </h2>
             <p className="text-xs text-sky-200 mt-1 flex items-center gap-1">
-              <span>Klik untuk lihat detail cagar budaya & air mancur</span>
+              <span>{featured ? `Lihat detail ${featured.title}` : 'Lihat semua destinasi'}</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </p>
           </div>
@@ -129,7 +109,7 @@ export const HomeScreen: React.FC = () => {
             {tourSpots.map((spot) => (
               <div
                 key={spot.id}
-                onClick={() => setActiveScreen('detail-tour')}
+                onClick={() => openDestination(spot.id)}
                 className="bg-white border border-slate-200/90 rounded-2xl p-3.5 flex gap-3.5 hover:shadow-md hover:border-[#19324d]/30 transition-all cursor-pointer"
               >
                 {/* Image */}
@@ -162,7 +142,7 @@ export const HomeScreen: React.FC = () => {
                   {/* Pricing info */}
                   <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between">
                     <div>
-                      <span className="text-[9px] text-slate-400 block">Tiket Masuk</span>
+                      <span className="text-[9px] text-slate-400 block">Harga / orang</span>
                       <span className="text-xs font-bold text-sky-600">
                         {spot.priceWeekday}
                       </span>
@@ -171,7 +151,7 @@ export const HomeScreen: React.FC = () => {
                     <button 
                       onClick={(e) => {
                         e.stopPropagation();
-                        setActiveScreen('detail-tour');
+                        openDestination(spot.id);
                       }}
                       className="px-2.5 py-1 bg-[#19324d] text-white text-[10px] font-bold rounded-lg shadow-sm"
                     >

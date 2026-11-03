@@ -1,3 +1,4 @@
+import { QRCodeSVG } from 'qrcode.react';
 import React, { useState } from 'react';
 import { useAppStore } from '../../store/useAppStore';
 import { 
@@ -74,13 +75,13 @@ export const LiveTourScreen: React.FC = () => {
                 {activeBooking.title}
               </h2>
               <p className="text-xs text-slate-500 uppercase tracking-widest font-semibold">
-                KODE QR CHECK-IN: {activeBooking.checkInQrCode || 'ZHS-QR-LIVE'}
+                KODE QR CHECK-IN: {activeBooking.checkInQrCode}
               </p>
             </div>
 
             <div className="p-6 bg-[#19324d] rounded-3xl w-60 h-60 mx-auto flex items-center justify-center shadow-lg">
               <div className="bg-white p-3 rounded-2xl">
-                <QrCode className="w-40 h-40 text-[#19324d]" />
+                <QRCodeSVG value={activeBooking.checkInQrCode || 'ZHS'} size={160} level="M" fgColor="#19324d" />
               </div>
             </div>
 

@@ -74,6 +74,7 @@ export async function loadCatalog(): Promise<boolean> {
       description: d.description ?? '',
       highlights: d.highlights ?? [],
       reviewsCount: d.reviews_count ?? 0,
+      ratingAvg: Number(d.rating_avg ?? 0),
       meetingPoints: (d.meeting_points ?? []).map((m: any) => ({ id: m.id, name: m.name, desc: m.description ?? '' }))
     }));
     replaceInPlace(AVAILABLE_DESTINATIONS, destItems);

@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 
 export const AIChatbotDrawer: React.FC = () => {
-  const { isAiDrawerOpen, toggleAiDrawer, chatMessages, sendAiMessage, startBooking } = useAppStore();
+  const { isAiDrawerOpen, toggleAiDrawer, chatMessages, sendAiMessage, startBooking, escalateToAdmin } = useAppStore();
   const [inputText, setInputText] = useState('');
 
   if (!isAiDrawerOpen) return null;
@@ -161,9 +161,7 @@ export const AIChatbotDrawer: React.FC = () => {
               Bila ada sengketa tur atau pertanyaan mendalam, sistem siap eskalasi ke Tim Admin ZHS (Human Handoff).
             </p>
             <button
-              onClick={() => {
-                sendAiMessage('Saya memerlukan bantuan langsung dari Admin ZHS terkait transaksi/tur.');
-              }}
+              onClick={() => void escalateToAdmin()}
               className="mt-2 text-[10px] font-bold text-purple-300 hover:text-white flex items-center gap-1 underline underline-offset-2"
             >
               <span>Eskalasi ke Admin (Buat Tiket Bantuan)</span>

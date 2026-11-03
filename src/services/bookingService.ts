@@ -163,6 +163,7 @@ export async function createBooking(draft: BookingState): Promise<BookingState> 
 
 export interface PaymentInfo {
   method: PaymentMethod;
+  demo?: boolean;                // true = mode uji (tanpa payment gateway)
   qrUrl?: string;
   vaNumber?: string;
   deeplinkUrl?: string;

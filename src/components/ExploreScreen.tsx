@@ -24,7 +24,7 @@ interface TourCardData {
 }
 
 export const ExploreScreen: React.FC = () => {
-  const { setActiveScreen, initDraftBooking, startBooking } = useAppStore();
+  const { setActiveScreen, openDestination, startBooking } = useAppStore();
   const [exploreMode, setExploreMode] = useState<'catalog' | 'smart-search'>('catalog');
   const [activeCategory, setActiveCategory] = useState<string>('Semua');
   const [sortBy, setSortBy] = useState<'populer' | 'rating' | 'harga'>('populer');
@@ -77,8 +77,7 @@ export const ExploreScreen: React.FC = () => {
     });
 
   const handleSelectTour = (tour: TourCardData) => {
-    initDraftBooking(tour.title, tour.location);
-    setActiveScreen(tour.screenTarget);
+    openDestination(tour.id);
   };
 
   return (
