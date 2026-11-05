@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { Guide, UMKM, Destination } from '../data/mockData';
 import { MOCK_GUIDES, MOCK_UMKM, MOCK_DESTINATIONS, AI_KNOWLEDGE_BASE } from '../data/mockData';
-import { callGeminiApi } from '../services/geminiService';
+import { callGeminiApi, AiError } from '../services/geminiService';
 import { supabase } from '../lib/supabase';
 import { defaultTourDate } from '../lib/dates';
 import { loadCatalog } from '../services/catalogService';
@@ -619,7 +619,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch (err) {
       console.error('Error fetching AI response:', err);
       failed = true;
-      reply = 'Maaf, asisten AI sedang tidak dapat dihubungi. Silakan coba beberapa saat lagi.';
+      reply = err instanceof AiError
+        ? err.userMessage
+        : 'Maaf, asisten AI sedang tidak dapat dihubungi. Silakan coba beberapa saat lagi.';
     }
     const me = get().currentUser;
     if (me && !failed) void saveAiMessages(me.id, [{ sender: 'user', body: text }, { sender: 'ai', body: reply }]);
