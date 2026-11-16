@@ -9,6 +9,7 @@ import { DetailTourScreen } from './components/screens/DetailTourScreen';
 import { BookingConfirmScreen } from './components/screens/BookingConfirmScreen';
 import { PaymentQrisScreen } from './components/screens/PaymentQrisScreen';
 import { PaymentSuccessScreen } from './components/screens/PaymentSuccessScreen';
+import { PaymentFailedScreen } from './components/screens/PaymentFailedScreen';
 import { BookingDetailScreen } from './components/screens/BookingDetailScreen';
 import { LiveTourScreen } from './components/screens/LiveTourScreen';
 import { ReviewScreen } from './components/screens/ReviewScreen';
@@ -86,6 +87,8 @@ export function App() {
         return <BookingConfirmScreen />;
       case 'payment-qris':
         return <PaymentQrisScreen />;
+      case 'payment-failed':
+        return <PaymentFailedScreen />;
       case 'payment-success':
         return <PaymentSuccessScreen />;
       case 'booking-detail':

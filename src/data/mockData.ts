@@ -1,5 +1,6 @@
 export interface Guide {
   id: string;
+  destinationIds?: string[];   // slug destinasi yang dilayani (dari tabel guide_destinations)
   name: string;
   avatar: string;
   rating: number;

@@ -51,15 +51,16 @@ const rowToUmkm = (r: any): UMKM => ({
 export async function loadCatalog(): Promise<boolean> {
   if (!isSupabaseConfigured) return false;
   try {
-    const [dest, transport, umkm, food, guides, certs] = await Promise.all([
+    const [dest, transport, umkm, food, guides, certs, guideDest] = await Promise.all([
       supabase.from('destinations').select('*, meeting_points(id,name,description)').eq('is_active', true).order('title'),
       supabase.from('transport_options').select('*').eq('is_active', true).order('price'),
       supabase.from('umkm_partners').select('*').eq('verified', true),
       supabase.from('food_items').select('*, umkm_partners(name), food_variants(*), food_sides(*)').eq('is_active', true),
       supabase.from('public_guides').select('*'),
-      supabase.from('guide_certifications').select('guide_id,name')
+      supabase.from('guide_certifications').select('guide_id,name'),
+      supabase.from('guide_destinations').select('guide_id,destinations(slug)')
     ]);
-    const firstError = [dest, transport, umkm, food, guides, certs].find((r) => r.error)?.error;
+    const firstError = [dest, transport, umkm, food, guides, certs, guideDest].find((r) => r.error)?.error;
     if (firstError) throw firstError;
 
     const destItems: DestinationItem[] = (dest.data ?? []).map((d: any) => ({
@@ -140,7 +141,15 @@ export async function loadCatalog(): Promise<boolean> {
 
     const certMap = new Map<string, string[]>();
     (certs.data ?? []).forEach((c: any) => certMap.set(c.guide_id, [...(certMap.get(c.guide_id) ?? []), c.name]));
-    replaceInPlace(MOCK_GUIDES, (guides.data ?? []).map((g: any) => rowToGuide(g, certMap.get(g.id))));
+    const destMap = new Map<string, string[]>();
+    (guideDest.data ?? []).forEach((r: any) => {
+      const slug = Array.isArray(r.destinations) ? r.destinations[0]?.slug : r.destinations?.slug;
+      if (slug) destMap.set(r.guide_id, [...(destMap.get(r.guide_id) ?? []), slug]);
+    });
+    replaceInPlace(
+      MOCK_GUIDES,
+      (guides.data ?? []).map((g: any) => ({ ...rowToGuide(g, certMap.get(g.id)), destinationIds: destMap.get(g.id) ?? [] }))
+    );
 
     return true;
   } catch (err) {

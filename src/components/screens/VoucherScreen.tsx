@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { fetchVoucherCards } from '../../services/voucherService';
+import type { VoucherCard } from '../../services/voucherService';
 import { useAppStore } from '../../store/useAppStore';
 import { timeAgo } from '../../services/tourismService';
 import {
@@ -81,7 +83,7 @@ export const VoucherScreen: React.FC = () => {
     ? Math.min(100, ((pointsBalance - currentLevel.minPoints) / (nextLevel.minPoints - currentLevel.minPoints)) * 100)
     : 100;
 
-  const vouchers = [
+  const fallbackVouchers = [
     {
       id: 'v1',
       title: 'Diskon 10% Tur Berikutnya',
@@ -110,6 +112,15 @@ export const VoucherScreen: React.FC = () => {
       minTrx: 'Min. transaksi Rp 100.000'
     }
   ];
+
+  // Daftar voucher dari database; jika kosong/gagal dimuat, pakai daftar bawaan di atas
+  const [dbVouchers, setDbVouchers] = useState<VoucherCard[] | null>(null);
+  useEffect(() => {
+    const descriptions = Object.fromEntries(fallbackVouchers.map((v) => [v.code, v.desc]));
+    fetchVoucherCards(descriptions).then(setDbVouchers).catch(() => setDbVouchers(null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const vouchers = dbVouchers && dbVouchers.length > 0 ? dbVouchers : fallbackVouchers;
 
   const handleCopy = (code: string) => {
     navigator.clipboard?.writeText(code);

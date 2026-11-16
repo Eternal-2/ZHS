@@ -132,6 +132,11 @@ export const BookingConfirmScreen: React.FC = () => {
     setActiveFoodModalItem(null);
   };
 
+  // Hanya pemandu yang melayani destinasi ini (dari data database). Tanpa data destinasi (mode lokal) tampilkan semua.
+  const availableGuides = MOCK_GUIDES.filter(
+    (g) => !g.destinationIds || g.destinationIds.includes(activeBooking.destinationId ?? '')
+  );
+
   const handleSelectGuide = (guide: typeof MOCK_GUIDES[0]) => {
     setBookingGuide(guide);
     setGuideModalOpen(false);
@@ -1030,7 +1035,12 @@ export const BookingConfirmScreen: React.FC = () => {
             </div>
 
             <div className="overflow-y-auto space-y-3 py-3 pr-1">
-              {MOCK_GUIDES.map((guide) => (
+              {availableGuides.length === 0 && (
+                <p className="text-xs text-slate-500 text-center py-8">
+                  Belum ada pemandu yang melayani destinasi ini. Coba destinasi lain atau kembali lagi nanti.
+                </p>
+              )}
+              {availableGuides.map((guide) => (
                 <div
                   key={guide.id}
                   onClick={() => handleSelectGuide(guide)}

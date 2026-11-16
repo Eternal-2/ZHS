@@ -204,9 +204,6 @@ export const HelpCenterScreen: React.FC = () => {
 
             {/* Input Bar */}
             <form onSubmit={handleSendAdminChat} className="p-3 bg-white border-t border-slate-200 flex items-center gap-2">
-              <button type="button" className="p-2 text-slate-400 hover:text-slate-600">
-                <Paperclip className="w-4 h-4" />
-              </button>
               <input
                 type="text"
                 value={inputText}

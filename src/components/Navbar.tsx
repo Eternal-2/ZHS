@@ -298,6 +298,7 @@ export const BottomNav: React.FC = () => {
 };
 
 export const DesktopFooter: React.FC = () => {
+  const { setActiveScreen } = useAppStore();
   return (
     <footer className="hidden md:block bg-white border-t border-slate-200 py-6 text-xs text-slate-500 mt-auto">
       <div className="max-w-7xl mx-auto px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -308,7 +309,7 @@ export const DesktopFooter: React.FC = () => {
         <div className="flex items-center gap-6 text-[11px] font-semibold text-slate-600">
           <a href="#" className="hover:underline">Syarat & Ketentuan</a>
           <a href="#" className="hover:underline">Kebijakan Privasi</a>
-          <a href="#" className="hover:underline">Pusat Bantuan</a>
+          <button type="button" onClick={() => setActiveScreen('help-center')} className="hover:underline">Pusat Bantuan</button>
           <a href="#" className="hover:underline">Sertifikasi BNSP</a>
         </div>
       </div>

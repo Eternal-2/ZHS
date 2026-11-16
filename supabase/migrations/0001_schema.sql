@@ -75,10 +75,27 @@ $$ select exists (select 1 from profiles where id = auth.uid() and role = 'admin
 create or replace function handle_new_user() returns trigger
 language plpgsql security definer set search_path = public as $$
 begin
-  insert into profiles (id, full_name, phone)
-  values (new.id, coalesce(new.raw_user_meta_data->>'full_name', split_part(new.email,'@',1)),
-          new.raw_user_meta_data->>'phone');
+  insert into profiles (id, full_name, phone, avatar_url)
+  values (new.id,
+          coalesce(new.raw_user_meta_data->>'full_name', new.raw_user_meta_data->>'name', split_part(new.email,'@',1)),
+          new.raw_user_meta_data->>'phone',
+          coalesce(new.raw_user_meta_data->>'avatar_url', new.raw_user_meta_data->>'picture'));
   return new;
+end $$;
+
+-- Jaring pengaman: dipanggil aplikasi jika profil user belum ada (mis. trigger terlambat dipasang).
+create or replace function ensure_profile() returns void
+language plpgsql security definer set search_path = public as $$
+declare u auth.users;
+begin
+  select * into u from auth.users where id = auth.uid();
+  if not found then raise exception 'Tidak ada sesi login'; end if;
+  insert into profiles (id, full_name, phone, avatar_url)
+  values (u.id,
+          coalesce(u.raw_user_meta_data->>'full_name', u.raw_user_meta_data->>'name', split_part(u.email,'@',1)),
+          u.raw_user_meta_data->>'phone',
+          coalesce(u.raw_user_meta_data->>'avatar_url', u.raw_user_meta_data->>'picture'))
+  on conflict (id) do nothing;
 end $$;
 create trigger on_auth_user_created after insert on auth.users
   for each row execute function handle_new_user();
@@ -413,12 +430,23 @@ begin
   if not found then raise exception 'Destinasi tidak ditemukan'; end if;
   if not exists (select 1 from guides where id = p_guide and verification = 'approved' and is_available)
     then raise exception 'Pemandu tidak tersedia'; end if;
+  if not exists (select 1 from guide_destinations where guide_id = p_guide and destination_id = p_destination)
+    then raise exception 'Pemandu ini tidak melayani destinasi tersebut'; end if;
+
+  -- satu pemandu satu tur per hari. Kunci per (pemandu, tanggal) mencegah dua pemesanan bersamaan lolos.
+  perform pg_advisory_xact_lock(hashtext(p_guide::text || p_date::text));
+  if exists (select 1 from bookings
+              where guide_id = p_guide and tour_date = p_date
+                and (status in ('escrow_locked','confirmed_by_guide','in_tour')
+                     or (status = 'pending_payment' and created_at > now() - interval '30 minutes'))) then
+    raise exception 'Pemandu sudah memiliki tur pada tanggal tersebut. Pilih tanggal atau pemandu lain.';
+  end if;
 
   select * into tier from pricing_tiers where min_pax <= pax order by min_pax desc limit 1;
   unit := round(d.base_price * (1 - tier.discount_percent / 100.0));
   tour_sub := unit * pax;
 
-  guides_n := ceil(pax / (select (value)::int from app_settings where key='pax_per_guide'));
+  guides_n := ceil(pax::numeric / (select (value)::int from app_settings where key='pax_per_guide'))::int;  -- pembagian desimal: 12 peserta = 2 pemandu
   extra_fee := greatest(0, guides_n - 1) * (select (value)::int from app_settings where key='extra_guide_fee');
 
   if p_transport is not null then

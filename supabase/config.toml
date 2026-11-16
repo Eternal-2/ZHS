@@ -1,3 +1,6 @@
-# Konfigurasi Supabase CLI (supabase/config.toml). Hanya bagian yang perlu diubah:
+# Konfigurasi Supabase CLI (supabase/config.toml).
 [functions.payment-webhook]
 verify_jwt = false   # dipanggil Midtrans (tanpa JWT Supabase); dilindungi signature_key
+
+[functions.ai-chat]
+verify_jwt = false   # pengunjung yang belum login boleh bertanya; dibatasi ai_rate_check di database

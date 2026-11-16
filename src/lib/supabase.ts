@@ -23,6 +23,9 @@ if (!isSupabaseConfigured) {
   );
 }
 
+/** URL Supabase yang valid (kosong jika env belum terbaca). */
+export const supabaseUrl = isValidUrl(rawUrl) ? rawUrl! : '';
+
 export const supabase = createClient(
   isValidUrl(rawUrl) ? rawUrl! : 'http://localhost:54321',
   rawKey || 'anon-key-belum-diisi',

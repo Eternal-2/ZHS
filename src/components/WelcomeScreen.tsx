@@ -1,5 +1,6 @@
 import React from 'react';
 import { useAppStore } from '../store/useAppStore';
+import { AVAILABLE_DESTINATIONS } from '../data/bookingExtras';
 import { LogoZH } from './LogoZH';
 import { 
   ShieldCheck, Compass, Store, 
@@ -7,34 +8,20 @@ import {
 } from 'lucide-react';
 
 export const WelcomeScreen: React.FC = () => {
-  const { setActiveScreen } = useAppStore();
+  const { setActiveScreen, openDestination } = useAppStore();
 
-  const featuredSpots = [
-    {
-      id: 'situ-buleud',
-      title: 'Situ Buleud & Air Mancur Sri Baduga',
-      location: 'Purwakarta, Jawa Barat',
-      price: 'Rp 35.000',
-      rating: '4.9',
-      image: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=600&q=80'
-    },
-    {
-      id: 'pasir-langlang',
-      title: 'Pasir Langlang Panyawangan (Hutan Pinus)',
-      location: 'Wanayasa, Purwakarta',
-      price: 'Rp 40.500',
-      rating: '4.8',
-      image: 'https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=600&q=80'
-    },
-    {
-      id: 'bromo-sunrise',
-      title: 'Tur Sunrise Savana Gunung Bromo',
-      location: 'Probolinggo, Jawa Timur',
-      price: 'Rp 360.000',
-      rating: '4.95',
-      image: 'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?auto=format&fit=crop&w=600&q=80'
-    }
-  ];
+  // Destinasi unggulan dari katalog database (rating tertinggi)
+  const featuredSpots = [...AVAILABLE_DESTINATIONS]
+    .sort((x, y) => (y.ratingAvg ?? 0) - (x.ratingAvg ?? 0))
+    .slice(0, 3)
+    .map((d) => ({
+      id: d.id,
+      title: d.title,
+      location: d.location,
+      price: `Rp ${d.unitPrice.toLocaleString('id-ID')}`,
+      rating: (d.ratingAvg ?? 0).toFixed(1),
+      image: d.image
+    }));
 
   return (
     <div className="min-h-screen w-full bg-[#f8fafc] text-slate-800 flex flex-col justify-between relative overflow-hidden select-none">
@@ -224,7 +211,7 @@ export const WelcomeScreen: React.FC = () => {
             {featuredSpots.map((spot) => (
               <div
                 key={spot.id}
-                onClick={() => setActiveScreen('explore')}
+                onClick={() => openDestination(spot.id)}
                 className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-2xs hover:shadow-md hover:border-slate-300 transition-all cursor-pointer group flex flex-col justify-between"
               >
                 <div className="relative h-40 w-full overflow-hidden bg-slate-100">

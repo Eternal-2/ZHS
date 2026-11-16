@@ -39,12 +39,8 @@ Deno.serve(async (req) => {
       const { data: updated } = await db.from('bookings')
         .update({ status: 'escrow_locked', guide_confirm_deadline: deadline })
         .eq('id', booking.id).eq('status', 'pending_payment').select('id');
-      if (updated?.length) {
-        await db.from('notifications').insert([
-          { user_id: booking.tourist_id, title: 'Pembayaran diterima', body: `Dana booking ${booking.code} aman di escrow ZHS.`, link_screen: 'booking-detail' },
-          { user_id: booking.guide_id, title: 'Permintaan tur baru', body: `Booking ${booking.code} menunggu konfirmasi Anda.`, link_screen: 'guide-booking-request' }
-        ]);
-      }
+      // Notifikasi ke wisatawan & pemandu dibuat otomatis oleh trigger database saat status berubah.
+      if (!updated?.length) console.log('Booking sudah tidak menunggu pembayaran:', booking.id);
     }
   } else if (['expire', 'cancel', 'deny', 'failure'].includes(status)) {
     await db.from('payments').update({ status: status === 'expire' ? 'expired' : 'failed', provider_payload: n }).eq('id', payment.id);

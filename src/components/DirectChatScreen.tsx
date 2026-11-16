@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { 
-  ArrowLeft, Send, ShieldCheck, Phone, CheckCheck, 
+  ArrowLeft, Send, ShieldCheck, LifeBuoy, CheckCheck, 
   MapPin, Calendar, Clock, Ticket, AlertCircle 
 } from 'lucide-react';
 
@@ -128,11 +128,11 @@ export const DirectChatScreen: React.FC = () => {
 
           <div className="flex items-center gap-2">
             <button
-              onClick={() => alert(`Menghubungkan panggilan darurat langsung ke ${partnerName} via Saluran Telepon ZHS.`)}
+              onClick={() => setActiveScreen('admin-chat')}
               className="px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-[#19324d] text-xs font-bold transition-all flex items-center gap-1.5 border border-slate-200"
             >
-              <Phone className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Panggilan Suara</span>
+              <LifeBuoy className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Hubungi Admin</span>
             </button>
           </div>
 

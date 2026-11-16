@@ -7,6 +7,21 @@ import {
 
 export const PaymentQrisScreen: React.FC = () => {
   const { activeBooking, paymentInfo, processPaymentSuccess, demoPayCurrent, setActiveScreen } = useAppStore();
+  // Simpan gambar QR; jika peramban memblokir unduhan lintas-situs, buka gambarnya di tab baru
+  const handleSaveQr = async () => {
+    const url = paymentInfo?.qrUrl;
+    if (!url) return;
+    try {
+      const blob = await (await fetch(url)).blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `QRIS-${activeBooking.id}.png`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch {
+      window.open(url, '_blank', 'noopener');
+    }
+  };
   const [seconds, setSeconds] = useState(() => {
     const exp = paymentInfo?.expiresAt ? Math.floor((new Date(paymentInfo.expiresAt).getTime() - Date.now()) / 1000) : 900;
     return Math.max(0, Math.min(exp, 24 * 3600));
@@ -93,7 +108,9 @@ export const PaymentQrisScreen: React.FC = () => {
 
           <button
             type="button"
-            className="inline-flex items-center gap-1.5 text-xs text-slate-600 hover:text-slate-900 font-semibold underline"
+            disabled={!paymentInfo?.qrUrl}
+            onClick={() => void handleSaveQr()}
+            className="inline-flex items-center gap-1.5 text-xs text-slate-600 hover:text-slate-900 font-semibold underline disabled:opacity-40 disabled:no-underline"
           >
             <Download className="w-3.5 h-3.5" />
             <span>Simpan ke Galeri</span>
