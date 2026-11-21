@@ -93,7 +93,7 @@ export const AdminSupportInbox: React.FC<{ adminId: string }> = ({ adminId }) =>
   const visible = tickets.filter((t) => t.status === filter);
 
   return (
-    <div className="max-w-3xl mx-auto px-4 pt-6 pb-16 space-y-4">
+    <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-black text-[#19324d]">Pusat Bantuan</h1>

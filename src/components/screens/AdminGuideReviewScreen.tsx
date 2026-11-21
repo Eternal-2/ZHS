@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { CheckCircle2, XCircle, Clock, RefreshCw, ExternalLink, LogOut, ChevronDown, ChevronUp, AlertCircle } from 'lucide-react';
+import { CheckCircle2, XCircle, Clock, RefreshCw, ExternalLink, ChevronDown, ChevronUp, AlertCircle } from 'lucide-react';
 import {
   DOC_LABEL, fetchApplicationsForAdmin, finalizeGuide, reviewDocument, signedUrls
 } from '../../services/guideApplicationService';
@@ -17,7 +17,7 @@ const StatusPill: React.FC<{ status: ApplicationDoc['status'] }> = ({ status }) 
   );
 
 /** Panel admin: meninjau dokumen pengajuan pemandu. Akses sebenarnya dijaga di server (fungsi admin_* memeriksa role). */
-export const AdminGuideReviewScreen: React.FC<{ adminName: string; onLogout: () => void }> = ({ adminName, onLogout }) => {
+export const AdminGuideReviewScreen: React.FC<{ onChanged?: () => void }> = ({ onChanged }) => {
   const [apps, setApps] = useState<AdminApplication[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -62,6 +62,7 @@ export const AdminGuideReviewScreen: React.FC<{ adminName: string; onLogout: () 
       await action();
       if (okMessage) setNotice(okMessage);
       await load();
+      onChanged?.();   // segarkan penanda jumlah di menu samping
     } catch (e: any) {
       setError(e?.message ?? 'Tindakan gagal');
     } finally {
@@ -87,19 +88,16 @@ export const AdminGuideReviewScreen: React.FC<{ adminName: string; onLogout: () 
     });
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] text-slate-800 pb-16">
-      <div className="max-w-3xl mx-auto px-4 pt-6 space-y-5">
+    <div className="text-slate-800">
+      <div className="space-y-5">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h1 className="text-xl font-black text-[#19324d]">Panel Admin · Verifikasi Pemandu</h1>
-            <p className="text-xs text-slate-500">{adminName} · {apps.length} pengajuan perlu perhatian</p>
+            <h1 className="text-xl font-black text-[#19324d]">Verifikasi Pemandu</h1>
+            <p className="text-xs text-slate-500">{apps.length} pengajuan perlu perhatian</p>
           </div>
           <div className="flex items-center gap-2">
             <button onClick={() => void load()} disabled={loading} className="p-2.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50" title="Muat ulang">
               <RefreshCw className={`w-4 h-4 text-slate-600 ${loading ? 'animate-spin' : ''}`} />
-            </button>
-            <button onClick={onLogout} className="p-2.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50" title="Keluar">
-              <LogOut className="w-4 h-4 text-slate-600" />
             </button>
           </div>
         </div>
