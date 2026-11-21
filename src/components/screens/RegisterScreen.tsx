@@ -13,9 +13,11 @@ const TRAVEL_PREFS = ['Alam', 'Budaya', 'Petualangan', 'Kuliner'];
 const LANGUAGES = ['Indonesia', 'Inggris', 'Mandarin', 'Arab', 'Sunda', 'Jawa'];
 
 export const RegisterScreen: React.FC = () => {
-  const { hydrateUser, setActiveScreen } = useAppStore();
-  const [roleTab, setRoleTab] = useState<'Wisatawan' | 'Pemandu'>('Wisatawan');
-  const [step, setStep] = useState<FormStep>('role-select');
+  const { hydrateUser, setActiveScreen, currentUser, redirectAfterLogin, setRedirectAfterLogin } = useAppStore();
+  // Datang dari "Masuk Dulu untuk Menjadi Pemandu": langsung ke pembuatan akun (jangan tanya peran lagi, itu yang membuat berputar)
+  const fromGuideGate = redirectAfterLogin === 'guide-register';
+  const [roleTab, setRoleTab] = useState<'Wisatawan' | 'Pemandu'>(fromGuideGate ? 'Pemandu' : 'Wisatawan');
+  const [step, setStep] = useState<FormStep>(fromGuideGate ? 'step1' : 'role-select');
 
   // Step 1 fields
   const [name, setName] = useState('');
@@ -192,7 +194,15 @@ export const RegisterScreen: React.FC = () => {
               </button>
 
               <button
-                onClick={() => { setRoleTab('Pemandu'); setActiveScreen('guide-register'); }}
+                onClick={() => {
+                  setRoleTab('Pemandu');
+                  if (currentUser) {
+                    setActiveScreen('guide-register');         // sudah punya akun: langsung ke formulir pemandu
+                  } else {
+                    setRedirectAfterLogin('guide-register');   // buat akun dulu, lalu otomatis ke formulir pemandu
+                    setStep('step1');
+                  }
+                }}
                 className="w-full p-5 bg-white border-2 border-slate-200 hover:border-amber-400 rounded-2xl flex items-center gap-4 text-left transition-all group shadow-sm"
               >
                 <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-200 group-hover:bg-amber-100 transition-colors">
@@ -238,9 +248,16 @@ export const RegisterScreen: React.FC = () => {
                 </div>
                 <span className="text-[10px] text-slate-400 font-bold uppercase">Langkah 1 dari 2</span>
               </div>
-              <h2 className="text-base font-extrabold text-[#19324d]">Data Diri Wisatawan</h2>
+              <h2 className="text-base font-extrabold text-[#19324d]">{roleTab === 'Pemandu' ? 'Buat Akun Pemandu' : 'Data Diri Wisatawan'}</h2>
             </div>
           </div>
+
+          {roleTab === 'Pemandu' && (
+            <div className="mb-4 p-3 rounded-2xl bg-amber-50 border border-amber-200 text-[11px] text-amber-900 leading-relaxed">
+              Buat akun ZHS Anda dulu. Setelah akun terverifikasi, Anda akan langsung diarahkan untuk melengkapi
+              data pemandu dan mengunggah dokumen (KTP, foto wajah, CV, sertifikat, portofolio).
+            </div>
+          )}
 
           <form onSubmit={handleStep1Next} className="space-y-3 flex-1">
             {/* Nama Lengkap */}
